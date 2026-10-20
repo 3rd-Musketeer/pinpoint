@@ -68,14 +68,16 @@ const frameStyle = (box) => `width:${box.width}px;height:${box.height}px;transfo
             <div class:list={['cc-box', f.box.mode, 'missing']} data-pp-missing style={boxStyle(f.box)}>
               <div class="ph">缺帧 {f.id}</div>
             </div>
-          ) : f.box.mode === 'doc' ? (
-            <div class:list={['cc-box', f.box.mode]} data-scale={f.box.scale} style={boxStyle(f.box)}>
-              <iframe src={f.src} loading="lazy" tabindex="-1" aria-hidden="true" scrolling="no" title={f.title} style={frameStyle(f.box)}></iframe>
-            </div>
           ) : (
             <div class:list={['cc-box', f.box.mode]} data-scale={f.box.scale} style={boxStyle(f.box)}>
-              <div class="cc-shadow" data-cc-src={f.src} data-cc-w={f.box.width} data-cc-h={f.box.height} data-cc-title={f.title} aria-hidden="true"></div>
-              <noscript><iframe src={f.src} loading="lazy" tabindex="-1" aria-hidden="true" scrolling="no" title={f.title} style={frameStyle(f.box)}></iframe></noscript>
+              {f.box.mode === 'doc' ? (
+                <iframe src={f.src} loading="lazy" tabindex="-1" aria-hidden="true" scrolling="no" title={f.title} style={frameStyle(f.box)}></iframe>
+              ) : (
+                <>
+                  <div class="cc-shadow" data-cc-src={f.src} data-cc-w={f.box.width} data-cc-h={f.box.height} data-cc-title={f.title} aria-hidden="true"></div>
+                  <noscript><iframe src={f.src} loading="lazy" tabindex="-1" aria-hidden="true" scrolling="no" title={f.title} style={frameStyle(f.box)}></iframe></noscript>
+                </>
+              )}
             </div>
           )}
           <a class="cc-hit" data-pp-frame-open href={canvasHash(m.sectionId, { frame: f.id })} aria-label={`在画布中打开 ${f.title}`}></a>

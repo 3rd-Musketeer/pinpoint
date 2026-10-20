@@ -44,11 +44,14 @@ export function cssHazard(cssText) {
   return null;
 }
 
+/** 不改写的地址：data: / http(s): / 绝对路径 / 纯 fragment（sprite 引用必须留在本树）。 */
+const isExternalish = (url) => /^(?:data:|https?:|\/|#)/.test(url);
+
 /** url() 相对地址按 base 改写成绝对；data: / http(s): / 绝对路径 / 纯 fragment 不动。 */
 export function rewriteCssUrls(cssText, baseUrl) {
   return String(cssText).replace(/url\(\s*(['"]?)([^)'"]+)\1\s*\)/g, (full, q, u) => {
     const url = u.trim();
-    if (/^(?:data:|https?:|\/|#)/.test(url)) return full;
+    if (isExternalish(url)) return full;
     return `url("${new URL(url, baseUrl).href}")`;
   });
 }
@@ -154,7 +157,7 @@ export function absolutizeSrcset(value, baseUrl) {
     if (!t) return t;
     const i = t.search(/\s/);
     const url = i < 0 ? t : t.slice(0, i);
-    if (/^(?:data:|https?:|\/|#)/.test(url)) return t;
+    if (isExternalish(url)) return t;
     return new URL(url, baseUrl).href + (i < 0 ? '' : t.slice(i));
   }).join(', ');
 }
@@ -162,6 +165,6 @@ export function absolutizeSrcset(value, baseUrl) {
 /** 单个资源属性的改写；fragment（#c-chev 这类 sprite 引用）和 data: 不动。 */
 export function absolutizeAttrValue(value, baseUrl) {
   const v = String(value || '');
-  if (!v || /^(?:data:|https?:|\/|#)/.test(v)) return v;
+  if (!v || isExternalish(v)) return v;
   return new URL(v, baseUrl).href;
 }
