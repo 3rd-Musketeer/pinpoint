@@ -251,6 +251,10 @@ export function updateMarkGeometry(dirtyRoots, layoutChanged, dirtyEntries) {
 export function updateCanvasZoom() {
   if (!ctx.canvasView) { onViewChange(); return; }
   beginOverlayFrame(); ctx.canvasView.pose = canvasPose(ctx.canvasView.stage);
+  // 拖左栏与缩放共用这条路径。缩放不改 overlay 尺寸；拖宽改可用区，气泡与组的视口裁切
+  // 都读 canvasView.width / height，这里补一次。只读 overlay 自己，不重测标注。
+  var overlayRect = viewRect(ctx.overlay);
+  ctx.canvasView.width = overlayRect[2]; ctx.canvasView.height = overlayRect[3];
   syncCanvasPose();
 }
 

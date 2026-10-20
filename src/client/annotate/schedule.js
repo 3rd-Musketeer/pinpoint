@@ -253,8 +253,10 @@ function contentMutation(record) {
   if (record.target === document.documentElement && record.type === 'attributes') {
     if (record.attributeName === 'data-canvas-zoom') return false;
     if (record.attributeName === 'style') {
+      // --wb-side-w 是拖左栏：只改可用区，不改帧内容。过滤不认它时，每帧 style 变更都升级成 renderAll
+      // （2026-09-24 性能审计：300 条标注 7.4 ms/帧）。视口投影由工作台拖动路径的 viewportChanged 补。
       var withoutViewport = function (value) { return String(value || '').split(';').filter(function (v) {
-        return v.trim() && !/^\s*(--wb-board-zoom|--wb-strip-w)\s*:/.test(v);
+        return v.trim() && !/^\s*(--wb-board-zoom|--wb-strip-w|--wb-side-w)\s*:/.test(v);
       }).join(';'); };
       if (withoutViewport(record.oldValue) === withoutViewport(record.target.getAttribute('style'))) return false;
     }

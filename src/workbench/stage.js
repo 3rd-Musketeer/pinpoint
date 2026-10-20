@@ -461,7 +461,10 @@ if (splitEl) {
     if (splitRaf) return;
     splitRaf = requestAnimationFrame(function () {
       splitRaf = 0;
-      var _a = annotateApi(); if (_a) _a.render();
+      // 拖宽只改可用区：走视口快路径（重投影已缓存的几何），不整层 renderAll。
+      // 旧客户端没有 viewportChanged 时仍走 render。
+      var _a = annotateApi();
+      if (_a) { if (_a.viewportChanged) _a.viewportChanged(); else _a.render(); }
     });
   }
 
