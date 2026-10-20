@@ -1,21 +1,55 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // 所有外部命令经过同一口；测试用隔离磁盘与假命令确认构建失败不 checkout / restart。
-export function promote({ root = ROOT, rev = 'main', release, home = os.homedir(), run = execFileSync, log = console.log, warn = console.error } = {}) {
-  const git = (args, cwd = root) => String(run('git', args, { cwd, encoding: 'utf8' })).trim();
-  const main = path.dirname(git(['rev-parse', '--path-format=absolute', '--git-common-dir']));
+export async function promote(options = {}) {
+  let interrupted, active, escalation;
+  let recovering = false;
+  const onSignal = signal => {
+    if (recovering || interrupted) return; // 收尾不能被第二次 Ctrl-C 再次打断。
+    interrupted = new Error(`收到 ${signal}，发布已中止`);
+    if (active) {
+      const pid = active.pid;
+      try { process.kill(-pid, signal); } catch { /* 命令已退出 */ }
+      escalation = setTimeout(() => { try { process.kill(-pid, 'SIGKILL'); } catch { /* 已退出 */ } }, 2000);
+    }
+  };
+  const handlers = ['SIGINT', 'SIGTERM'].map(signal => {
+    const handler = () => onSignal(signal);
+    process.on(signal, handler);
+    return [signal, handler];
+  });
+  const run = async (cmd, args, commandOptions) => {
+    if (interrupted && !recovering) throw interrupted;
+    try {
+      const result = options.run ? await options.run(cmd, args, commandOptions) : await new Promise((resolve, reject) => {
+        // 每条外部命令自己的组，信号只转发给这条命令及其 npm 子进程；恢复命令另起。
+        active = execFile(cmd, args, { ...commandOptions, encoding: 'utf8', detached: true },
+          (error, stdout) => error ? reject(error) : resolve(stdout));
+      });
+      if (interrupted && !recovering) throw interrupted;
+      return result;
+    } catch (error) { throw interrupted && !recovering ? interrupted : error; }
+    finally { active = null; clearTimeout(escalation); }
+  };
+  try { return await promoteTransaction({ ...options, run, recover: () => { recovering = true; } }); }
+  finally { for (const [signal, handler] of handlers) process.off(signal, handler); }
+}
+
+async function promoteTransaction({ root = ROOT, rev = 'main', release, home = os.homedir(), run, recover, log = console.log, warn = console.error }) {
+  const git = async (args, cwd = root) => String(await run('git', args, { cwd, encoding: 'utf8' })).trim();
+  const main = path.dirname(await git(['rev-parse', '--path-format=absolute', '--git-common-dir']));
   const rel = release || process.env.PINPOINT_RELEASE_DIR || path.join(main.replace('/repos/', '/repos/.worktrees/'), 'release');
   if (!fs.existsSync(rel)) throw new Error(`no release worktree at ${rel}`);
-  if (git(['status', '--porcelain'], rel)) throw new Error(`${rel} is dirty; the release worktree only moves by promote`);
-  if (git(['branch', '--show-current'], rel)) throw new Error(`${rel} is on a branch; portless would serve it on <branch>.pinpoint.localhost`);
-  const target = git(['rev-parse', '--verify', `${rev}^{commit}`]);
-  const prev = git(['rev-parse', 'HEAD'], rel);
+  if (await git(['status', '--porcelain'], rel)) throw new Error(`${rel} is dirty; the release worktree only moves by promote`);
+  if (await git(['branch', '--show-current'], rel)) throw new Error(`${rel} is on a branch; portless would serve it on <branch>.pinpoint.localhost`);
+  const target = await git(['rev-parse', '--verify', `${rev}^{commit}`]);
+  const prev = await git(['rev-parse', 'HEAD'], rel);
   fs.mkdirSync(path.join(root, '.tmp'), { recursive: true });
   const prepared = fs.mkdtempSync(path.join(root, '.tmp/promote-'));
   let moved = false;
@@ -46,17 +80,17 @@ export function promote({ root = ROOT, rev = 'main', release, home = os.homedir(
   try {
     // 不先 checkout 活服务的目录：Vite 正在监听它，失败后再 checkout 回去已经太晚。
     const archive = path.join(prepared, 'source.tar');
-    run('git', ['archive', '--format=tar', '--output', archive, target], { cwd: root });
-    run('tar', ['-xf', archive, '-C', prepared], { cwd: root });
+    await run('git', ['archive', '--format=tar', '--output', archive, target], { cwd: root });
+    await run('tar', ['-xf', archive, '-C', prepared], { cwd: root });
     const oldLock = fs.readFileSync(path.join(rel, 'package-lock.json'));
     const newLock = fs.readFileSync(path.join(prepared, 'package-lock.json'));
     const install = !oldLock.equals(newLock) || !fs.existsSync(path.join(rel, 'node_modules'));
-    if (install) run('npm', ['ci', '--no-audit', '--no-fund'], { cwd: prepared, stdio: 'inherit' });
+    if (install) await run('npm', ['ci', '--no-audit', '--no-fund'], { cwd: prepared, stdio: 'inherit' });
     else fs.symlinkSync(path.join(rel, 'node_modules'), path.join(prepared, 'node_modules'), 'dir');
     const pkg = JSON.parse(fs.readFileSync(path.join(prepared, 'package.json'), 'utf8'));
     const bundled = Boolean(pkg.scripts?.['build:workbench']);
     if (bundled) {
-      run('npm', ['run', 'build:workbench'], { cwd: prepared, stdio: 'inherit',
+      await run('npm', ['run', 'build:workbench'], { cwd: prepared, stdio: 'inherit',
         env: { ...process.env, PINPOINT_WORKBENCH_DIST: path.join(prepared, '.tmp/workbench-dist') } });
       // 命令成功也必须真的有壳页和资源，才允许动正式 checkout。
       const built = path.join(prepared, '.tmp/workbench-dist');
@@ -66,9 +100,9 @@ export function promote({ root = ROOT, rev = 'main', release, home = os.homedir(
     }
     // 构建成功后才停旧；从第一次 stop 起，任何失败都必须恢复运行中的旧服务。
     serviceTouched = true;
-    service('stop', oldEnv);
-    git(['checkout', '-q', '--detach', target], rel);
+    await service('stop', oldEnv);
     moved = true;
+    await git(['checkout', '-q', '--detach', target], rel);
     if (install) {
       if (fs.existsSync(path.join(rel, 'node_modules'))) fs.renameSync(path.join(rel, 'node_modules'), previousDeps);
       depsMoved = true;
@@ -86,14 +120,15 @@ export function promote({ root = ROOT, rev = 'main', release, home = os.homedir(
       fs.rmSync(path.join(dist, 'enabled'), { force: true });
     }
     const newEnv = { ...oldEnv, PINPOINT_WORKBENCH_MODE: bundled ? 'bundle' : 'dev' };
-    service('start', newEnv);
-    service('status', newEnv);
+    await service('start', newEnv);
+    await service('status', newEnv);
   } catch (error) {
+    recover();
     if (serviceTouched) {
       try {
         // start 可能已经起了进程再返回失败；先停它，才允许恢复磁盘。
-        service('stop', oldEnv);
-        if (moved) git(['checkout', '-q', '--detach', prev], rel);
+        await service('stop', oldEnv);
+        if (moved) await git(['checkout', '-q', '--detach', prev], rel);
         fs.mkdirSync(dist, { recursive: true });
         if (priorShell) fs.writeFileSync(path.join(dist, 'index.html'), priorShell);
         else fs.rmSync(path.join(dist, 'index.html'), { force: true });
@@ -103,13 +138,13 @@ export function promote({ root = ROOT, rev = 'main', release, home = os.homedir(
           fs.rmSync(path.join(rel, 'node_modules'), { recursive: true, force: true });
           if (fs.existsSync(previousDeps)) fs.renameSync(previousDeps, path.join(rel, 'node_modules'));
         }
-        service('start', oldEnv);
-        service('status', oldEnv);
+        await service('start', oldEnv);
+        await service('status', oldEnv);
       } catch (rollbackError) {
         // 不清掉尚未恢复的旧依赖副本，给 owner 留恢复材料。
         preservePrepared = true;
         // 恢复启动也可能留下不健康的旧进程；尽力停止，恢复脚本还会再次检查 stop。
-        try { service('stop', oldEnv); } catch { /* 不掩盖恢复失败，材料与命令保留 */ }
+        try { await service('stop', oldEnv); } catch { /* 不掩盖恢复失败，材料与命令保留 */ }
         throw new AggregateError([error, rollbackError], `${error.message}；旧服务恢复失败：${rollbackError.message}；恢复材料保留在 ${prepared}；恢复命令：sh ${quote(recovery)}`);
       }
     }
@@ -127,6 +162,6 @@ export function promote({ root = ROOT, rev = 'main', release, home = os.homedir(
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try { promote({ rev: process.argv[2] || 'main' }); }
+  try { await promote({ rev: process.argv[2] || 'main' }); }
   catch (error) { console.error(`promote: ${error.message}`); process.exitCode = 1; }
 }

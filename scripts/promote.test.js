@@ -55,10 +55,10 @@ function fixture(t, { buildFails = false, installFails = false, changedLock = fa
   return { root, rel, dist, calls, args: { root, release: rel, home: path.join(root, 'home'), run, log() {} } };
 }
 
-test('promote：构建/安装失败或伪成功无产物，不移动 release，不重启，不记发布', t => {
+test('promote：构建/安装失败或伪成功无产物，不移动 release，不重启，不记发布', async t => {
   for (const failure of [{ buildFails: true }, { installFails: true, changedLock: true }, { incomplete: true }]) {
     const f = fixture(t, failure);
-    assert.throws(() => promote(f.args));
+    await assert.rejects(() => promote(f.args));
     assert.equal(f.calls.some(c => c.args[0] === 'checkout' || c.cmd === process.execPath), false);
     assert.equal(fs.readFileSync(path.join(f.dist, 'index.html'), 'utf8'), 'old-shell');
     assert.equal(fs.existsSync(path.join(f.root, 'home/.pinpoint/logs/releases.log')), false);
@@ -66,9 +66,9 @@ test('promote：构建/安装失败或伪成功无产物，不移动 release，�
   }
 });
 
-test('promote：先构建后切换，复用依赖、保留旧 hash，成功后记日志与回滚提交', t => {
+test('promote：先构建后切换，复用依赖、保留旧 hash，成功后记日志与回滚提交', async t => {
   const f = fixture(t);
-  assert.deepEqual(promote(f.args), { prev: 'old-sha', target: 'new-sha' });
+  assert.deepEqual(await promote(f.args), { prev: 'old-sha', target: 'new-sha' });
   const build = f.calls.findIndex(c => c.cmd === 'npm');
   const checkout = f.calls.findIndex(c => c.args[0] === 'checkout');
   const stop = f.calls.findIndex(c => c.args[1] === 'stop');
@@ -80,9 +80,9 @@ test('promote：先构建后切换，复用依赖、保留旧 hash，成功后�
   assert.match(fs.readFileSync(path.join(f.root, 'home/.pinpoint/logs/releases.log'), 'utf8'), /old-sha -> new-sha/);
 });
 
-test('promote：lock 变化在快照内安装；重启失败恢复提交、依赖和壳页并报错', t => {
+test('promote：lock 变化在快照内安装；重启失败恢复提交、依赖和壳页并报错', async t => {
   const f = fixture(t, { changedLock: true, restartFails: true });
-  assert.throws(() => promote(f.args), /restart failed/);
+  await assert.rejects(() => promote(f.args), /restart failed/);
   const checkouts = f.calls.filter(c => c.args[0] === 'checkout').map(c => c.args.at(-1));
   assert.deepEqual(checkouts, ['new-sha', 'old-sha']);
   assert.equal(fs.existsSync(path.join(f.rel, 'node_modules/new-dep')), false);
@@ -90,16 +90,16 @@ test('promote：lock 变化在快照内安装；重启失败恢复提交、依�
   assert.equal(fs.existsSync(path.join(f.dist, 'enabled')), true);
 });
 
-test('promote：可回滚到打包机制引入之前，停用 bundle 标记', t => {
+test('promote：可回滚到打包机制引入之前，停用 bundle 标记', async t => {
   const f = fixture(t, { legacy: true });
-  promote(f.args);
+  await promote(f.args);
   assert.equal(f.calls.some(c => c.cmd === 'npm'), false);
   assert.equal(fs.existsSync(path.join(f.dist, 'enabled')), false);
 });
 
-test('promote：磁盘回滚也失败时，报出恢复路径并保留旧依赖副本', t => {
+test('promote：磁盘回滚也失败时，报出恢复路径并保留旧依赖副本', async t => {
   const f = fixture(t, { changedLock: true, restartFails: true, rollbackFails: true });
-  assert.throws(() => promote(f.args), /restart failed.*旧服务恢复失败.*恢复材料保留在.*recovery\.sh/);
+  await assert.rejects(() => promote(f.args), /restart failed.*旧服务恢复失败.*恢复材料保留在.*recovery\.sh/);
   const [kept] = fs.readdirSync(path.join(f.root, '.tmp'));
   assert.ok(kept);
   assert.equal(fs.statSync(path.join(f.root, '.tmp', kept, 'previous-node_modules')).isDirectory(), true);

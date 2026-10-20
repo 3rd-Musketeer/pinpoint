@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import test from 'node:test';
 import { promote } from './promote.mjs';
 
@@ -26,6 +26,7 @@ async function fixture(t) {
   write('package-lock.json', JSON.stringify({ name: 'promote-fixture', version: '1.0.0', lockfileVersion: 3, packages: { '': { name: 'promote-fixture', version: '1.0.0' } } }));
   write('build.mjs', `import fs from 'node:fs';import path from 'node:path';
 if(process.env.FAIL_PHASE==='build')process.exit(7);
+if(process.env.GATE_PHASE==='build'){fs.writeFileSync(process.env.FAKE_GATE+'.entered','');while(!fs.existsSync(process.env.FAKE_GATE+'.release'))await new Promise(r=>setTimeout(r,20));}
 const d=process.env.PINPOINT_WORKBENCH_DIST;fs.mkdirSync(path.join(d,'assets'),{recursive:true});
 fs.writeFileSync(path.join(d,'index.html'),'new-shell');fs.writeFileSync(path.join(d,'assets/new-abc123.js'),'new-asset');`);
   write('version.txt', 'old');
@@ -40,18 +41,22 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));`);
 const state=process.env.FAKE_STATE,phase=process.env.FAIL_PHASE;
 const version=fs.readFileSync('version.txt','utf8');const target=version==='new';
 const pause=()=>new Promise(r=>setTimeout(r,20));
+fs.appendFileSync(process.env.FAKE_STATE+'.actions',process.argv[2]+':'+version+'\\n');
+async function gate(phase){if(process.env.GATE_PHASE!==phase||fs.existsSync(process.env.FAKE_GATE+'.entered'))return;fs.writeFileSync(process.env.FAKE_GATE+'.entered','');while(!fs.existsSync(process.env.FAKE_GATE+'.release'))await pause();}
 async function probe(){try{const r=await fetch('http://127.0.0.1:'+process.env.FAKE_PORT,{signal:AbortSignal.timeout(500)});return r.ok?await r.json():null;}catch{return null;}}
 async function stop(){if(fs.existsSync(state)){try{process.kill(Number(fs.readFileSync(state,'utf8')),'SIGTERM');}catch{}fs.rmSync(state,{force:true});}for(let n=0;n<100&&await probe();n++)await pause();if(await probe())process.exit(12);}
 async function start(){
+if(target)await gate('before-start');
 if(target&&phase==='restart-before-start')process.exit(9);
 if(!target&&phase==='restore-start')process.exit(13);
 const child=spawn(process.execPath,[path.resolve('service.mjs')],{cwd:process.cwd(),detached:true,stdio:'ignore',env:process.env});child.unref();
 for(let n=0;n<100&&!fs.existsSync(state);n++)await pause();
+if(target)await gate('after-start');
 if(target&&phase==='restart-after-start')process.exit(10);
 if(!fs.existsSync(state))process.exit(11);}
 switch(process.argv[2]){case 'stop':await stop();break;case 'start':await start();break;
 case 'restart':await stop();await start();break;
-case 'status':{const h=await probe();if(!h||h.version!==version||(target&&['health','restore-start'].includes(phase)))process.exit(14);break;}
+case 'status':{if(target)await gate('health');const h=await probe();if(!h||h.version!==version||(target&&['health','restore-start'].includes(phase)))process.exit(14);break;}
 default:throw new Error('unknown fake CLI action');}`);
   git('add', '.'); git('commit', '-qm', 'old'); const old = git('rev-parse', 'HEAD');
   write('version.txt', 'new'); git('add', '.'); git('commit', '-qm', 'new'); const newer = git('rev-parse', 'HEAD');
@@ -84,9 +89,68 @@ default:throw new Error('unknown fake CLI action');}`);
     run: (cmd, args, options) => execFileSync(cmd, args, { ...options, env: { ...env, ...options.env,
       FAKE_STATE: state, FAKE_PORT: String(port), FAIL_PHASE: phase }, stdio: ['ignore', 'pipe', 'pipe'] }) });
   const alive = async () => (await fetch(`http://127.0.0.1:${port}`, { signal: AbortSignal.timeout(1000) })).json();
+  const worker = path.join(dir, 'worker.mjs');
+  fs.writeFileSync(worker, `import {promote} from ${JSON.stringify(new URL('./promote.mjs', import.meta.url).href)};
+try{await promote({root:process.argv[2],release:process.argv[3],rev:process.argv[4],home:process.argv[5]});}catch(e){console.error(e.message);process.exitCode=1;}`);
+  const launch = ({ phase = 'before-start', failure = '', release = rel, rev = newer } = {}) => {
+    const gate = path.join(dir, `gate-${Math.random()}`);
+    const logfile = gate + '.log';
+    const fd = fs.openSync(logfile, 'w');
+    const child = spawn(process.execPath, [worker, root, release, rev, home], {
+      detached: true, stdio: ['ignore', fd, fd], env: { ...env, GATE_PHASE: phase, FAKE_GATE: gate, FAIL_PHASE: failure },
+    });
+    fs.closeSync(fd);
+    const done = new Promise(resolve => child.once('exit', (code, signal) => resolve({ code, signal })));
+    t.after(async () => { if (child.exitCode === null && child.signalCode === null) { process.kill(-child.pid, 'SIGKILL'); await done; } });
+    return { child, done, gate, output: () => fs.readFileSync(logfile, 'utf8'),
+      entered: () => until(() => fs.existsSync(gate + '.entered')),
+      unblock: () => fs.writeFileSync(gate + '.release', '') };
+  };
   return { dir, root, rel, dist, home, old, newer, broken, legacy, invoke, alive, warnings,
+    launch, actions: () => fs.readFileSync(state + '.actions', 'utf8'),
     recover: script => run('sh', [script], rel, env), head: () => run('git', ['rev-parse', 'HEAD'], rel) };
 }
+
+async function until(predicate) {
+  const deadline = Date.now() + 15000;
+  while (!predicate()) {
+    assert.ok(Date.now() < deadline, '等待真实子进程阶段超时');
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+}
+
+test('promote：真实进程组 SIGINT/SIGTERM 在构建、起新前后与健康检查中安全收尾', async t => {
+  for (const signal of ['SIGINT', 'SIGTERM']) for (const phase of ['build', 'before-start', 'after-start', 'health']) {
+    await t.test(`${signal} ${phase}`, async t => {
+      const f = await fixture(t);
+      const p = f.launch({ phase });
+      await p.entered();
+      process.kill(-p.child.pid, signal);
+      const result = await p.done;
+      assert.notEqual(result.code, 0);
+      assert.deepEqual(await f.alive(), { version: 'old', deps: 'old', shell: 'old-shell' });
+      assert.equal(f.head(), f.old);
+      if (phase === 'build') assert.equal(f.actions(), 'start:old\n');
+      else assert.match(f.actions(), /start:old\nstatus:old\n$/);
+      assert.match(p.output(), new RegExp(signal));
+      assert.deepEqual(fs.readdirSync(path.join(f.root, '.tmp')), []);
+    });
+  }
+});
+
+test('promote：信号收尾恢复也失败时打印完整可执行命令', async t => {
+  const f = await fixture(t);
+  const p = f.launch({ failure: 'restore-start' });
+  await p.entered();
+  process.kill(-p.child.pid, 'SIGTERM');
+  assert.notEqual((await p.done).code, 0);
+  const output = p.output();
+  assert.match(output, /SIGTERM.*旧服务恢复失败.*恢复命令：sh '/s);
+  const [, script] = output.match(/恢复命令：sh '([^']+)'/);
+  assert.equal(fs.existsSync(script), true);
+  f.recover(script);
+  assert.deepEqual(await f.alive(), { version: 'old', deps: 'old', shell: 'old-shell' });
+});
 
 test('promote 真实生命周期：review 七个场景', async t => {
   for (const [name, revision, phase, fails] of [
@@ -100,8 +164,8 @@ test('promote 真实生命周期：review 七个场景', async t => {
   ]) await t.test(name, async t => {
     const f = await fixture(t);
     if (phase === 'log') { fs.mkdirSync(path.join(f.home, '.pinpoint'), { recursive: true }); fs.writeFileSync(path.join(f.home, '.pinpoint/logs'), 'blocked'); }
-    if (fails) assert.throws(() => f.invoke(f[revision], phase));
-    else f.invoke(f[revision], phase);
+    if (fails) await assert.rejects(() => f.invoke(f[revision], phase));
+    else await f.invoke(f[revision], phase);
     const version = fails ? 'old' : revision === 'legacy' ? 'legacy' : 'new';
     const shell = version === 'new' ? 'new-shell' : 'old-shell';
     assert.deepEqual(await f.alive(), { version, deps: 'old', shell });
@@ -114,13 +178,13 @@ test('promote 真实生命周期：review 七个场景', async t => {
 
 test('promote：新服务健康检查失败也恢复旧 HTTP 服务', async t => {
   const f = await fixture(t);
-  assert.throws(() => f.invoke(f.newer, 'health'));
+  await assert.rejects(() => f.invoke(f.newer, 'health'));
   assert.deepEqual(await f.alive(), { version: 'old', deps: 'old', shell: 'old-shell' });
 });
 
 test('promote：恢复启动也失败，保留材料并给出可执行的完整恢复命令', async t => {
   const f = await fixture(t);
-  assert.throws(() => f.invoke(f.newer, 'restore-start'), /恢复.*失败.*recovery\.sh/s);
+  await assert.rejects(() => f.invoke(f.newer, 'restore-start'), /恢复.*失败.*recovery\.sh/s);
   const [kept] = fs.readdirSync(path.join(f.root, '.tmp'));
   const script = fs.readFileSync(path.join(f.root, '.tmp', kept, 'recovery.sh'), 'utf8');
   assert.match(script, /stop/); assert.match(script, /checkout/); assert.match(script, /start/); assert.match(script, /status/);
