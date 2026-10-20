@@ -55,10 +55,10 @@ async function canvasReady(page) {
 /** 浮层停在了哪一节、最后一次定位落到了哪里。 */
 const overlayState = (page) => page.evaluate(() => window.pinpointOverlay?.state() || null);
 
-async function openArticle(page, url = ARTICLE) {
+async function openArticle(page, url = ARTICLE, { force = false } = {}) {
   await page.goto(url);
   await expect(page.locator('#article .prose h1')).toHaveText('提交前确认', { timeout: 150_000 });
-  await waitNoReload(page);
+  await waitNoReload(page, { force });
   await expect(page.locator('#article .prose h1')).toHaveText('提交前确认');
 }
 
@@ -70,7 +70,7 @@ test('画布浮层：点帧打开整张画布并选中；从文章进画布不�
   const consoleErrors = [];
   page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
 
-  await openArticle(page);
+  await openArticle(page, ARTICLE, { force: true }); // 上一条 spec（article-source）的登记复原可能还带着一次整页重载
   consoleErrors.length = 0; // 冷启动那几次 503 记成 Failed to load resource
   await proseSettled(page);
   let before = null;
