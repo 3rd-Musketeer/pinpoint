@@ -190,6 +190,9 @@ test('按屏重摆维护板级提升的 import：删掉即撤销、旁屏在用�
 
     await openWorkbenchConnected(page, 'page=' + HOIST_ID);
     await expect(one).toContainText('one v1');
+    // 初建固件的整批 watch 事件可能还在编译；先以一次真实改稿回执建立增量窗口。
+    fs.writeFileSync(path.join(HOIST_DIR, 'one.html'), HOIST_FILES['one.html'].replace('one v1', 'one ready'));
+    await expect(one).toContainText('one ready');
     await settled();
     await expect.poll(async () => (await hoistLook(page)).own?.color).toBe('rgb(255, 0, 0)');
     const gen0 = await page.evaluate(() => window.workbench.mountGeneration());
