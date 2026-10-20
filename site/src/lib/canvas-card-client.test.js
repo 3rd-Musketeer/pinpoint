@@ -119,3 +119,31 @@ test('sheetText：没有循环的 import 展开成内联文本，:root 搬到 :h
   });
   assert.equal(await settleWithin(sheetText(`${origin}article.css`)), ':host{--c:red} .card{color:var(--c)}');
 });
+
+test('sheetText：瞬时 500 本次按空表，但失败不进缓存，下一张卡重取拿到真文本（r5 B3）', async (t) => {
+  const origin = 'http://transient.test/sites/demo_page/';
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls += 1;
+    if (calls === 1) return { ok: false, status: 500, text: async () => '' };
+    return { ok: true, text: async () => '.card{color:red}' };
+  });
+  // 本次挂载按空表（与 <link> 失败一致，不回退 iframe）。
+  assert.equal(await settleWithin(sheetText(`${origin}article.css`)), '');
+  // 同页下一张卡片再取同一张表：重新请求，拿到真文本 —— 一次 5xx 不再把空表放大到全页会话。
+  assert.equal(await settleWithin(sheetText(`${origin}article.css`)), '.card{color:red}');
+  assert.equal(calls, 2);
+});
+
+test('sheetText：永久缺失的表每次按空表兑现，不是 null（不因此退回 iframe）', async (t) => {
+  const origin = 'http://missing.test/sites/demo_page/';
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls += 1;
+    return { ok: false, status: 404, text: async () => '' };
+  });
+  for (let i = 0; i < 2; i += 1) {
+    assert.equal(await settleWithin(sheetText(`${origin}wb-tokens.css`)), '');
+  }
+  assert.equal(calls, 2, '空表不缓存：永久缺失的表每张卡多取一次，换取瞬时失败可重试');
+});

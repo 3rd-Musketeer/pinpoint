@@ -125,34 +125,40 @@ function watchDocFrame(iframe) {
 // Vite 的 CSS 普通 fetch 会拿到 JS 模块；?direct 取回 CSS 原文（静态文件服务忽略这个参数）。
 const directUrl = (url) => url + (url.includes('?') ? '&' : '?') + 'direct';
 
-// CSS 原文按 URL 共用（97 张卡片的 kit / article.css 只取一次）；非 2xx 按空表处理 ——
-// iframe 里那条 <link> 失败同样没有样式（如 /workbench/wb-tokens.css 经 SPA 回退）。
+// CSS 原文按 URL 共用（97 张卡片的 kit / article.css 只取一次）。
 // 只缓存原文请求：@import 展开每一趟按自己的地址链做（resolveCssImports），不共享别的趟
 // 未完成的展开 —— 共享它，循环 import 的两张表会互等，卡片永远停在空壳。
 const rawCssCache = new Map();
-function rawCss(url) {
+/** 非 2xx 与网络层失败都 reject，缓存条目随之清掉：一次瞬时失败（dev 重编窗口的 5xx / 404）
+    不放大到全页会话的空表（r5 B3）；永久缺失的表（wb-tokens 经 SPA 回退）只是每张卡多取一次。 */
+function rawCssStrict(url) {
   if (!rawCssCache.has(url)) {
-    const pending = (async () => {
-      const res = await fetch(directUrl(url));
-      return res.ok ? res.text() : '';
-    })();
-    // 瞬时失败不留缓存（本次挂载回退 iframe，下一张卡还能重试）。
+    const pending = fetch(directUrl(url)).then((res) => {
+      if (!res.ok) throw new Error(`CSS ${res.status}`);
+      return res.text();
+    });
     pending.catch(() => { if (rawCssCache.get(url) === pending) rawCssCache.delete(url); });
     rawCssCache.set(url, pending);
   }
   return rawCssCache.get(url);
 }
+/** 内容视图：取不到按空表 —— iframe 里那条 <link> 失败同样没有样式，@import 的展开照常继续。 */
+const rawCss = (url) => rawCssStrict(url).catch(() => '');
 
 /**
  * <link> 指向的一张表展开成 constructed stylesheet 可用的文本。null：这张表展开不出合法 CSS
  * （@import 带 layer() / supports()、循环 import），引用它的帧退回 iframe（各帧各自退回）。
+ * 入口表自己取不到时按空表兑现（不回退 iframe，与 <link> 失败一致），且这条失败不进缓存。
  * 结果按 URL 缓存给后面的卡片：每个缓存项是从这张表起的一整趟展开，里面只等原文请求
  * （rawCss），从不等别的缓存项，所以不会互等。
  */
 const sheetTextCache = new Map();
 export function sheetText(url) {
   if (!sheetTextCache.has(url)) {
-    const pending = (async () => cssFromText(await rawCss(url), url, [url]))();
+    const pending = rawCssStrict(url).then(
+      (text) => cssFromText(text, url, [url]),
+      () => { sheetTextCache.delete(url); return ''; },
+    );
     pending.catch(() => { if (sheetTextCache.get(url) === pending) sheetTextCache.delete(url); });
     sheetTextCache.set(url, pending);
   }
