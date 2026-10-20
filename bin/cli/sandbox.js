@@ -23,12 +23,16 @@ const AUTO_START = 6400;
 const AUTO_END = 6499;
 const SITE_OFFSET = 5;
 
-/** 端口在 127.0.0.1 上能不能 listen。 */
+/** 端口在 127.0.0.1 上能不能 listen。超范围等非法值 listen 同步抛 RangeError：当「不空」答。 */
 export function portFree(port) {
   return new Promise((resolve) => {
     const server = net.createServer();
     server.once('error', () => resolve(false));
-    server.listen(port, '127.0.0.1', () => server.close(() => resolve(true)));
+    try {
+      server.listen(port, '127.0.0.1', () => server.close(() => resolve(true)));
+    } catch {
+      resolve(false);
+    }
   });
 }
 
@@ -51,6 +55,9 @@ export async function pickSandboxPorts({ port = null, sitePort = null, isFree = 
   }
   if (wanted) {
     const site = wantedSite || wanted + SITE_OFFSET;
+    // 站点端口按 +5 推导，--port 贴着 65535 时会越界：net listen 对越界端口同步
+    // 抛 RangeError，不在这里拦住就是裸栈退出（CLI 排查 #1）。
+    if (!validPort(site)) return { error: `--port ${wanted} 推导出的站点端口 ${site} 超出 1~65535，换一个离上限远点的端口` };
     if (site === wanted) return { error: '服务端口和站点端口不能相同' };
     if (OWNER_PORTS.includes(site)) return { error: `站点端口 ${site} 是 owner 在用的，用 --site-port 换一个` };
     if (!(await isFree(wanted))) return { error: `端口 ${wanted} 已经被占了` };

@@ -27,8 +27,16 @@ export function planMovedBucket(bucket, move) {
     let next = { ...doc };
     let target = name;
     if (typeof doc.path === 'string' && doc.path.startsWith(siteFrom)) {
-      // doc.path 已解码；hash 必须用 iframe 实际加载的编码 URL。
-      const candidates = (move.htmlPathnames || []).filter((url) => decodeURIComponent(url) === doc.path);
+      // doc.path 已解码；hash 必须用 iframe 实际加载的编码 URL。路径里带裸 % 的
+      // 文件名解不开（URI malformed）：跳过这个候选，别让整个预检炸掉 —— 认不出
+      // 的账本走下面的 CliError，报哪本没搬（CLI 排查 #3）。
+      const candidates = (move.htmlPathnames || []).filter((url) => {
+        try {
+          return decodeURIComponent(url) === doc.path;
+        } catch {
+          return false;
+        }
+      });
       // 失效帧可能已不在文章里；只接受能重现原账本名的标准编码形式。
       candidates.push(doc.path.split('/').map((part) => part.startsWith('@') ? part : encodeURIComponent(part)).join('/'));
       const pathname = candidates.find((url) => `${annotationSlug(pageKeyFromPathname(url))}.json` === name);

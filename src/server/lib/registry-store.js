@@ -37,12 +37,19 @@ function withoutRetiredKeys(entry) {
   return out;
 }
 
-/** Atomic JSON write: tmp sibling + rename, 2-space layout, trailing newline. */
+/** Atomic JSON write: tmp sibling + rename, 2-space layout, trailing newline.
+    写失败（磁盘满、权限）时清掉半截 tmp，不在数据根留垃圾（CLI 排查 #11）。 */
 export function writeRegistryFile(registryPath, doc) {
   fs.mkdirSync(path.dirname(registryPath), { recursive: true });
   const tmp = `${registryPath}.tmp-${process.pid}`;
-  fs.writeFileSync(tmp, JSON.stringify(doc, null, 2) + '\n');
-  fs.renameSync(tmp, registryPath);
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(doc, null, 2) + '\n');
+    fs.renameSync(tmp, registryPath);
+  } finally {
+    try {
+      fs.rmSync(tmp, { force: true, recursive: true });
+    } catch { /* 清不掉就留着，原错误照抛 */ }
+  }
 }
 
 /** Strict validation of one entry about to be written. Returns an error message or null. */

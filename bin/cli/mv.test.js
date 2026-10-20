@@ -11,6 +11,7 @@ import test from 'node:test';
 
 import { REPO_ROOT } from './core.js';
 import { classifyMv } from './mv.js';
+import { planMovedBucket } from './bucket-move.js';
 import { articleCanvas } from '../../src/server/lib/article-board.js';
 import { createAnnotationStore } from '../../src/server/lib/annotation-store.js';
 import { loadRegistry } from '../../src/server/lib/registry.js';
@@ -797,4 +798,21 @@ test('N4：未知图片或 symlink 保留并中止；mv 与 remove 均能接受�
   fs.writeFileSync(path.join(bucket, 'images', '@canvas-1-1.png'), '可确认归属的遗留图片');
   assert.equal((await runIn(made, ['mv', 'e2e-project/commit-confirm', 'e2e-project/renamed'])).code, 0);
   assert.equal(readJson(path.join(bucket, '@canvas.json')).annotations[0].id, 'c1');
+});
+
+test('桶搬迁预检：htmlPathnames 里有解不开的裸 %（50%off.html）不炸，走标准重编码兜底', (t) => {
+  const dir = tempDir(t);
+  const bucket = path.join(dir, 'src_a');
+  fs.mkdirSync(bucket, { recursive: true });
+  // 浏览器把裸 % 编成 %25；账本 path 记解码后的形态。
+  const url = '/sites/src_a/shared/50%25off.html';
+  const decoded = '/sites/src_a/shared/50%off.html';
+  const key = annotationSlug(pageKeyFromPathname(url));
+  fs.writeFileSync(path.join(bucket, `${key}.json`), JSON.stringify({ page: key, path: decoded, revision: 2, annotations: [] }));
+  const move = { fromProject: 'src', fromArticle: 'a', articleId: 'a', fromId: 'src_a', toId: 'dst_a', toProject: 'dst', toArticle: 'a', htmlPathnames: [url] };
+  const plan = planMovedBucket(bucket, move);
+  assert.equal(plan.files.length, 1);
+  const next = JSON.parse(plan.files[0].content);
+  assert.equal(next.path, '/sites/dst_a/shared/50%off.html');
+  assert.equal(plan.files[0].to, `${annotationSlug(pageKeyFromPathname('/sites/dst_a/shared/50%25off.html'))}.json`);
 });

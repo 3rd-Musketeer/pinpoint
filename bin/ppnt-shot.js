@@ -83,7 +83,8 @@ export async function renderShots({ origin, pageId, jobs, env = process.env }) {
       fs.mkdirSync(path.dirname(job.out), { recursive: true });
       fs.writeFileSync(job.out, await response.body());
       const headers = response.headers();
-      results.push({ out: job.out, label: job.label || '', width: headers['x-export-width'], height: headers['x-export-height'] });
+      // --json 的 shots[].width / height 是数字（另两条截图路径都出数字）；HTTP 头是字符串，转掉（CLI 排查 #12）。
+      results.push({ out: job.out, label: job.label || '', width: Number(headers['x-export-width'] ?? 0), height: Number(headers['x-export-height'] ?? 0) });
     }
     await context.close();
   } finally {

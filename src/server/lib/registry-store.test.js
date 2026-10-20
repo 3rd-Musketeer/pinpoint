@@ -37,6 +37,17 @@ test('writeRegistryFile: creates parent dirs, 2-space JSON, trailing newline, no
   assert.deepEqual(fs.readdirSync(path.dirname(file)), ['registry.json'], 'tmp sibling is renamed away');
 });
 
+test('writeRegistryFile: 写失败时清掉半截 tmp，不在数据根留垃圾', (t) => {
+  const dir = withTempDir(t);
+  const file = path.join(dir, 'registry.json');
+  // 占住 tmp 名：writeFileSync 打不开 → 抛错；finally 把占位的 tmp 清掉。
+  const tmp = `${file}.tmp-${process.pid}`;
+  fs.mkdirSync(tmp);
+  assert.throws(() => writeRegistryFile(file, { version: 1, entries: [] }));
+  assert.deepEqual(fs.readdirSync(dir), [], '写失败的 tmp 不残留');
+  assert.ok(!fs.existsSync(file), '正式文件不被半截写碰着');
+});
+
 test('addRegistryEntry: missing file starts a fresh {version:1, entries:[...]} document', (t) => {
   const dir = withTempDir(t);
   const file = path.join(dir, 'registry.json');

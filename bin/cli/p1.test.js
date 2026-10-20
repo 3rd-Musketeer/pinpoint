@@ -400,6 +400,9 @@ test('pickSandboxPorts：owner 的端口一律不接受；自动找一对空端�
   const taken = new Set([6400, 6401, 6407]);
   assert.deepEqual(await pickSandboxPorts({ isFree: async (p) => !taken.has(p) }), { port: 6403, sitePort: 6408 });
   assert.match((await pickSandboxPorts({ port: 'abc' })).error, /端口号/);
+  // +5 推导的站点端口越界：报用法错（退 2），不是裸栈 RangeError。
+  assert.match((await pickSandboxPorts({ port: 65535, isFree: async () => true })).error, /站点端口 65540 超出/);
+  assert.deepEqual(await pickSandboxPorts({ port: 65530, isFree: async () => true }), { port: 65530, sitePort: 65535 });
 });
 
 test('dev --sandbox：不接受 ~/.pinpoint；env.sh 包含 CLI 的隔离变量', async (t) => {

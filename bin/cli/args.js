@@ -80,8 +80,13 @@ export function parseArgs(argv) {
     }
     if (!spec.flags.has(name)) fail(`选项 --${name} 不适用于 ${command}`);
     const value = inline > 0 ? arg.slice(inline + 1) : args[++i];
-    if (value === undefined || value === '' || value.startsWith('--')) {
+    if (value === undefined || value === '') {
       fail(`选项 --${name} 缺少值`);
+    }
+    // 值以 -- 开头：= 内联形式无歧义照收；分开写的分不清是值还是下一个选项，
+    // 指路 --name=<值>（报错文案要与事实相符：值是有的，是形状被拒）。
+    if (inline < 0 && value.startsWith('--')) {
+      fail(`选项 --${name} 的值不能以 -- 开头（分不清是值还是下一个选项），写成 --${name}=<值>`);
     }
     flags[name] = value;
   }

@@ -98,7 +98,8 @@ test('parseArgs: usage errors are loud', () => {
   assert.throws(() => parseArgs(['add', '/a', '/b']), /只接受一个目标/);
   assert.throws(() => parseArgs(['add', '/a', '--wat', '1']), /未知选项/);
   assert.throws(() => parseArgs(['add', '/a', '--title']), /缺少值/);
-  assert.throws(() => parseArgs(['add', '/a', '--title', '--id', 'x']), /缺少值/);
+  // 值以 -- 开头不是「缺少值」：指路 = 内联写法（--title=--draft 照收）。
+  assert.throws(() => parseArgs(['add', '/a', '--title', '--id', 'x']), /值不能以 -- 开头/);
   assert.throws(() => parseArgs(['add', '/a', '--id=']), /缺少值/);
 });
 
@@ -1231,6 +1232,10 @@ test('parseArgs: build / render 的选项与位置参数', () => {
   assert.throws(() => parseArgs(['render', 'x/y', '--watch']), /选项 --watch 不适用于 render/);
   assert.throws(() => parseArgs(['build', 'x', '--frame']), /选项 --frame 缺少值/);
   assert.throws(() => parseArgs(['build', 'x', '--screen', 's1-home']), /未知选项：--screen/);
+  // 值以 -- 开头：= 内联形式无歧义照收；分开写的指路 --name=<值>，不是「缺少值」。
+  assert.deepEqual(parseArgs(['add', './x', '--title=--draft']), { command: 'add', target: './x', flags: { title: '--draft' } });
+  assert.throws(() => parseArgs(['add', './x', '--title', '--draft']), /值不能以 -- 开头.*--title=<值>/s);
+  assert.throws(() => parseArgs(['add', './x', '--title=']), /选项 --title 缺少值/);
 });
 
 test('planRenderOutput：限内原文，超限截断 + 落盘计划，--full 不截断', () => {
