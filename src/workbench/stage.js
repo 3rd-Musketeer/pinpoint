@@ -75,7 +75,6 @@ import {
   setActiveEntry,
   setActivePage,
   setActiveTab,
-  tabPrefFor,
   tabsOfActiveBoard,
   showPageManifestError,
   switchPage,
@@ -179,9 +178,10 @@ async function loadBoard(panel, pageId, loadOptions) {
     // fullBoard 留着全部 tab，跨 tab 定位与引用号表靠它。存量 board 没有 tab：board === fullBoard。
     var fullBoard = board;
     var current = wbGet().activeBoard;
+    var tabPrefs = readPrefs().activeTabByPage;
     var wantedTab = loadOptions.tabId
       || (current && current.pageId === pageId && current.tabId)
-      || tabPrefFor(pageId);
+      || (tabPrefs && tabPrefs[pageId]) || '';
     var tabId = resolveTabId(fullBoard, wantedTab);
     board = boardForTab(fullBoard, tabId);
     var entries = screenEntries(board).map(function (hit) { return hit.screen; });

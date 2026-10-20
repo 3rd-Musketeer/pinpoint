@@ -206,10 +206,6 @@ function tabPrefs() {
   return raw && typeof raw === 'object' ? raw : {};
 }
 
-export function tabPrefFor(pageId) {
-  return tabPrefs()[pageId] || null;
-}
-
 function saveTabPref(pageId, tabId) {
   var all = Object.assign({}, tabPrefs());
   all[pageId] = tabId;
