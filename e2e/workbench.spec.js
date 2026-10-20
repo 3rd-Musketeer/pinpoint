@@ -3093,3 +3093,95 @@ test('列表点“完成”：画布钉子当场消失，撤销后回来并恢�
   await expect(badge).toHaveCount(1);
   await expect(badge.first()).not.toHaveClass(/ann-badge--close/);
 });
+
+// r5b B10：重命名框是全库唯一漏 isComposingKey 的输入框 —— 组字中的 Enter 把
+// 半成品存成页名（Chrome 组字中 key='Process' 字符串比较侥幸挡住；Safari/Firefox
+// 带真实键名直接中招）。合成事件带真实键名 + isComposing，测的就是 handler 的守卫。
+test('重命名框组字中的 Enter / Esc 不提交，组字结束才收（输入法守卫）', async ({ page }) => {
+  await openWorkbench(page);
+  const row = page.locator('#wbpages [data-vpage="e2e-ios"]');
+  const original = await row.locator('.wb-page-t').textContent();
+  await row.click({ button: 'right' });
+  await page.locator('[data-rename-page="e2e-ios"]').click();
+  const input = page.locator('.wb-page-rename');
+  await expect(input).toBeVisible();
+  await input.fill('阿妹页');
+  const composingKey = (key, code, keyCode) => page.evaluate(([key, code, keyCode]) => {
+    const el = document.activeElement;
+    el.dispatchEvent(new CompositionEvent('compositionstart', { data: '妹' }));
+    el.dispatchEvent(new KeyboardEvent('keydown', { key, code, keyCode, which: keyCode, bubbles: true, cancelable: true, isComposing: true }));
+  }, [key, code, keyCode]);
+  await composingKey('Enter', 'Enter', 13);
+  await composingKey('Escape', 'Escape', 27);
+  // 两次都被守卫挡住：还在编辑、值原样（提交会关掉编辑态，取消会还原成原名）
+  await expect(input).toBeVisible();
+  await expect(input).toHaveValue('阿妹页');
+  // 组字结束后的 Enter 正常提交
+  await page.evaluate(() => document.activeElement.dispatchEvent(new CompositionEvent('compositionend', { data: '妹' })));
+  await input.press('Enter');
+  await expect(input).toHaveCount(0);
+  await expect(row.locator('.wb-page-t')).toHaveText('阿妹页');
+  // 改回原名，共享固件不带走
+  await row.click({ button: 'right' });
+  await page.locator('[data-rename-page="e2e-ios"]').click();
+  await expect(input).toBeVisible();
+  await input.fill(original);
+  await input.press('Enter');
+  await expect(row.locator('.wb-page-t')).toHaveText(original);
+});
+
+// r5b B7：画布条目上选「右侧通道」原来两头都不渲染 —— canvas 气泡无条件自藏，
+// 父级 gutter 又只认文档 iframe，评论全体消失。修后画布实例照常就地画。
+test('画布条目上「右侧通道」档：评论卡照常就地出，不再全体消失', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => { window.pinpoint.clear(); window.pinpoint.setMode(true); });
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  await cells.first().scrollIntoViewIfNeeded();
+  await annotate(page, cells.first(), 'chan on canvas');
+  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().count)).toBe(1);
+  // 画布条目没有 doc iframe，gutter 不会接管；sidebar 档就地画。
+  await page.evaluate(() => window.pinpoint.setBubbleLayout('sidebar'));
+  await page.locator('.ann-badge').first().hover();
+  await expect.poll(() => page.evaluate(() => {
+    const bubble = document.querySelector('#ann-bubbles .ann-bubble');
+    return bubble && !bubble.hidden && bubble.classList.contains('ann-bubble--show');
+  })).toBe(true);
+  // 收尾：恢复默认档 + 退标注模式 + 清标注，别把状态带给同页后面的用例
+  await page.evaluate(() => {
+    window.pinpoint.setBubbleLayout('inline');
+    window.pinpoint.setMode(false);
+    window.pinpoint.clear();
+  });
+});
+
+// r5b B1：workbench.focusFrame 是 async（跨 tab 先切再挂），nav.js 曾把返回的
+// Promise 当同步布尔 —— 恒真，孤儿标注（帧已不在板上）点击的四段回退全成死代码。
+// lastRect 幽灵跳转（pp2）就是其中一段：锚点失效但留有最后位置，滚到它最后一次在的地方。
+test('孤儿标注从列表点击仍按 lastRect 幽灵跳转，舞台不再纹丝不动', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => { window.pinpoint.clear(); });
+  // 直 POST /save 造孤儿：screenId 不在板上，lastRect 记的是画布内容坐标。
+  const doc = await (await page.request.get('/annotations/%40canvas?entry=e2e-ios')).json();
+  const orphan = {
+    id: 'orphan-ghost', n: (doc.annotations.reduce((m, a) => Math.max(m, a.n), 0)) + 1,
+    type: 'element', pageId: 'e2e-ios', screenId: 'no-such-frame',
+    content: '孤儿定位', selector: '[data-owner-heading]',
+    targets: [{ ref: 'i1', selector: '[data-owner-heading]', text: '标题' }],
+    lastRect: { x: 2400, y: 1800, w: 160, h: 48, space: 'canvas' },
+  };
+  const res = await page.request.post('/save', {
+    data: { page: '@canvas', entry: 'e2e-ios', path: doc.path, baseRevision: doc.revision, annotations: [...doc.annotations, orphan] },
+  });
+  expect(res.status()).toBe(200);
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.some((m) => m.screenId === 'no-such-frame'))).toBe(true);
+  await page.evaluate(() => { const s = document.getElementById('wbstage'); s.scrollTop = 0; s.scrollLeft = 0; });
+  await openAnnList(page);
+  await page.locator('#wbann-list .wb-ann-item-main').first().click();
+  // 修前：focusFrame 的 Promise 被当 true，四段回退不走，舞台 (0,0)→(0,0)。
+  // 修后：幽灵跳转把舞台滚到 lastRect 那一带。
+  await expect.poll(() => page.evaluate(() => document.getElementById('wbstage').scrollTop), { timeout: 10_000 }).toBeGreaterThan(200);
+  await expect(page.locator('#ann-box')).toBeVisible();
+  await page.evaluate(() => window.pinpoint.removeMark(...window.pinpoint.marks.filter((m) => m.screenId === 'no-such-frame').map((m) => m.n)));
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.some((m) => m.screenId === 'no-such-frame'))).toBe(false);
+  await page.keyboard.press('Escape');
+});
