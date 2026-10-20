@@ -6,7 +6,7 @@ import { openOwnerArticle, openOwnerStaticArticle, ownerCleanup, seedOwner } fro
 import { OWNER_SOURCE, OWNER_STATIC_SOURCE, OWNER_UPDATE_SOURCE } from './lib/owner-fixture.js';
 import { E2E_BASE_URL, E2E_DATA_DIR } from './env.js';
 
-for (const recovery of ['SSE 重连', 'persisted pageshow']) test(`R3：${recovery} 补取断流期间的稿，文章文档不重装`, async ({ page }) => {
+for (const recovery of ['SSE 重连', 'persisted pageshow']) test(`R3：${recovery} 条件补刷不重建未变卡片，断流改稿后仍更新`, async ({ page }) => {
   test.setTimeout(180_000);
   let blocked = false;
   const streams = new Set();
@@ -21,7 +21,7 @@ for (const recovery of ['SSE 重连', 'persisted pageshow']) test(`R3：${recove
     res.on('close', () => { streams.delete(res); upstream.destroy(); });
   });
   await new Promise(resolve => proxy.listen(0, '127.0.0.1', resolve));
-  const files = ['s', 'd'].map(id => path.join(OWNER_UPDATE_SOURCE, `${id}.jsx`));
+  const files = ['s', 'd', 'h'].map(id => path.join(OWNER_UPDATE_SOURCE, `${id}.${id === 'h' ? 'html' : 'jsx'}`));
   const originals = files.map(file => fs.readFileSync(file, 'utf8'));
   try {
     await page.routeWebSocket(/\/_astro\//, () => {});
@@ -43,16 +43,65 @@ for (const recovery of ['SSE 重连', 'persisted pageshow']) test(`R3：${recove
     const fallback = page.frameLocator('[data-screen="d"] iframe').locator('[data-update]');
     await expect(shadow).toHaveText('s OLD', { timeout: 30_000 });
     await expect(fallback).toHaveText('d OLD');
+    const html = page.frameLocator('[data-screen="h"] iframe').locator('[data-update]');
+    await expect(html).toHaveText('h OLD');
+    const checks = [];
+    let cssRequests = 0;
+    page.on('response', res => {
+      const req = res.request();
+      if (req.frame() !== page.mainFrame() || req.resourceType() !== 'fetch') return;
+      const url = new URL(res.url());
+      if ((url.pathname === '/api/frame' && ['s', 'd'].includes(url.searchParams.get('screen')))
+        || url.pathname.endsWith('/h.html')) checks.push({ status: res.status(), validator: req.headers()['if-none-match'] });
+    });
+    page.on('request', req => {
+      if (req.frame() === page.mainFrame() && /\.css(?:[?]|$)/.test(req.url())) cssRequests++;
+    });
+    await page.evaluate(() => {
+      const s = document.querySelector('[data-screen="s"] .cc-shadow');
+      const d = document.querySelector('[data-screen="d"] iframe');
+      const h = document.querySelector('[data-screen="h"] iframe');
+      window.__cardNodes = { s, d, h, sd: s.shadowRoot, dd: d.contentDocument, hd: h.contentDocument };
+      window.__cardMutations = 0;
+      const observer = new MutationObserver(rows => { window.__cardMutations += rows.length; });
+      for (const frame of [s, d, h]) observer.observe(frame.parentElement, { childList: true });
+    });
+    await page.waitForFunction(() => window.__opens > 0);
+    // 先保持源码不变，检验恢复补刷只做条件检查。
+    for (const cycle of [1, 2, 3]) {
+      const firstOpens = await page.evaluate(() => window.__opens);
+      const firstErrors = await page.evaluate(() => window.__errors);
+      checks.length = 0;
+      blocked = true;
+      if (recovery === 'persisted pageshow') await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
+      else { for (const stream of streams) stream.destroy(); await page.waitForFunction(n => window.__errors > n, firstErrors); }
+      blocked = false;
+      if (recovery === 'persisted pageshow') await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+      await page.waitForFunction(n => window.__opens > n, firstOpens, { timeout: 30_000 });
+      await expect.poll(() => checks.length).toBeGreaterThanOrEqual(2);
+      expect(checks.every(row => row.status === 304 && row.validator)).toBe(true);
+      await expect.poll(() => checks.length).toBe(3);
+      expect(checks.every(row => row.status === 304 && row.validator)).toBe(true);
+      expect(cssRequests).toBe(0);
+      expect(await page.evaluate(() => window.__cardMutations)).toBe(0);
+      console.log('CARD_REVALIDATE', JSON.stringify({ recovery, cycle, checks, cssRequests }));
+      expect(await page.evaluate(() => {
+        const n = window.__cardNodes;
+        return n.s.isConnected && n.sd === n.s.shadowRoot && n.d.isConnected && n.dd === n.d.contentDocument
+          && n.h.isConnected && n.hd === n.h.contentDocument;
+      })).toBe(true);
+    }
     await page.waitForFunction(() => window.__opens > 0);
     await page.evaluate(() => { window.__sameDocument = true; });
     const opens = await page.evaluate(() => window.__opens);
+    const errors = await page.evaluate(() => window.__errors);
     blocked = true;
     if (recovery === 'persisted pageshow') {
       // 检验 persisted 事件处理路径；不冒充浏览器真实进入了 bfcache。
       await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
     } else {
       for (const stream of streams) stream.destroy();
-      await page.waitForFunction(() => window.__errors > 0);
+      await page.waitForFunction(n => window.__errors > n, errors);
     }
     files.forEach((file, i) => fs.writeFileSync(file, originals[i].replace('OLD', 'RECOVERED')));
     for (const id of ['s', 'd']) await expect.poll(() => {
@@ -64,6 +113,7 @@ for (const recovery of ['SSE 重连', 'persisted pageshow']) test(`R3：${recove
     await page.waitForFunction(n => window.__opens > n, opens, { timeout: 30_000 });
     await expect(shadow).toHaveText('s RECOVERED', { timeout: 30_000 });
     await expect(fallback).toHaveText('d RECOVERED', { timeout: 30_000 });
+    await expect(html).toHaveText('h RECOVERED', { timeout: 30_000 });
     expect(await page.evaluate(() => window.__sameDocument)).toBe(true);
   } finally {
     await ownerCleanup(page);

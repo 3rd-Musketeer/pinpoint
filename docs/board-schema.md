@@ -22,6 +22,8 @@
   同页编译串行落盘，输入代次在读入前记录。单次请求以进入时的输入为最低目标：已满足直接返回，否则返回随后开始的一个编译 ticket 的产物，不无限追赶后继保存；断连即停止该请求的等待，其他消费者的编译继续。
   后继代次由 watcher 的编译完成信号推进：工作台走 HMR，文章复用正文评论的 `/events` 连接，只重取受影响的已挂载卡片。编译失败或没编过的屏 500 带
   错误文本，画布出 `.wb-screen-err` 面板——重跑 `ppnt build` 即修。
+  SSE 重连或 persisted pageshow 恢复只做条件补刷：以已显示响应的 ETag 发 If-None-Match，304 保留 DOM 和 CSS 缓存，200 后才换稿。
+  原生 HTML 的实际导航 ETag 经 frameHtml 的 Server-Timing `pp-etag` 提供，父页从同源 Navigation Timing 读取；不改变 HTML 字节、网址、宽度或原生懒加载。
 - board.json 响应附 `dist: { builtAt, stale }`，`stale` = 任一源文件的 mtime 晚于 `builtAt`。
 - watch（服务与 `ppnt build --watch` 同一条管线）盯页目录里的 `.jsx` / `.html` / `.css` / `.js` /
   `.json`（含 board.json）/ `.ts` / `.tsx` / `.mjs` / `.cjs` / `.mts` / `.cts`——帧 import 的数据与

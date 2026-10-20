@@ -19,6 +19,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+test('frameHtml：导航时暴露实际响应的 ETag，父文档可条件检查原生 iframe', () => {
+  const body = Buffer.from('<html><body>原生页面</body></html>');
+  const res = mockRes();
+  sendCacheable(mockReq('GET', '/frame'), res, body, { policy: 'frameHtml', contentType: 'text/html' });
+  assert.equal(res.headers['Server-Timing'], `pp-etag;desc="${encodeURIComponent(res.headers.ETag)}"`);
+  assert.equal(res.text, body.toString(), '不改原生 HTML 字节或地址');
+});
+
 test('mimeFor / contentTypeFor：全表、fallback、文本类补 charset', () => {
   assert.equal(mimeFor('a.html'), 'text/html');
   assert.equal(mimeFor('a.JS'), 'application/javascript');

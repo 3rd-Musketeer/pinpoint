@@ -95,6 +95,9 @@ export function sendCacheable(req, res, body, { policy, contentType, etag = null
   const tag = etag || contentEtag(body);
   res.setHeader('Cache-Control', row.cacheControl);
   res.setHeader('ETag', tag);
+  // 同源原生 iframe 的父页只能从 Navigation Timing 读响应元数据，不能直接读导航响应头。
+  // 透出这一次实际显示的校验值；不另取一次源文件来猜，避免把后继稿的 ETag 记在旧画面上。
+  if (row === CACHE_POLICIES.frameHtml) res.setHeader('Server-Timing', `pp-etag;desc="${encodeURIComponent(tag)}"`);
   if (etagMatches(req.headers['if-none-match'], tag)) {
     res.statusCode = 304;
     res.end();

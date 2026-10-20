@@ -375,25 +375,9 @@ async function mountShadow(host, box, doc, base, sheets) {
   host.dataset.ccMounted = '1';
 }
 
-async function mountCard(host) {
+async function mountCard(host, text, url) {
   const box = host.parentElement;
-  const url = new URL(host.dataset.ccSrc, location.href).href;
   const title = host.dataset.ccTitle || '';
-  let text;
-  try {
-    const res = await fetch(url);
-    text = await res.text();
-    if (!res.ok) {
-      let detail = '';
-      try { detail = JSON.parse(text).message || ''; } catch { /* 错误页不是 JSON */ }
-      failNote(box, detail || `HTTP ${res.status}`);
-      host.remove();
-      return;
-    }
-  } catch {
-    fallbackFrame(host, box, { src: url, title }); // 网络层失败：回退浏览器自己的加载路径
-    return;
-  }
   const doc = new DOMParser().parseFromString(text, 'text/html');
   const base = new URL(doc.querySelector('base')?.getAttribute('href') || url, url).href;
   if (scriptHazard(doc)) return fallbackFrame(host, box, { srcdoc: text, title });
@@ -429,39 +413,66 @@ function initStaticCards() {
   const states = [...document.querySelectorAll('.cc-shadow[data-cc-src], [data-pp-canvas] .cc-box.doc iframe')].map(host => ({
     host, template: host.cloneNode(true), fig: host.closest('.cc-frame'), box: host.parentElement,
     doc: host.tagName === 'IFRAME',
-    running: false, settled: false, dirty: false,
+    running: false, settled: false, dirty: false, force: false, etag: '', text: '',
   }));
   if (!states.length) return;
   let active = 0;
   const pending = [];
-  const reset = (state) => {
+  const replace = (state) => {
     if (!state.doc) {
       if (state.host.shadowRoot) tickRoots.delete(state.host.shadowRoot);
       state.host = state.template.cloneNode(true);
       state.box.replaceChildren(state.host);
     }
-    // 原生文档保留同一个 iframe（宽度和 loading），只将已加载的页面排进更新队列。
-    delete state.host.dataset.ccStarted;
+    state.host.dataset.ccStarted = '1';
     state.box.querySelector('.ph')?.remove();
     delete state.box.dataset.fitted;
     delete state.box.dataset.failed;
-    state.settled = state.dirty = false;
+  };
+  const refresh = async (state, force) => {
+    const doc = state.doc ? state.host.contentDocument : null;
+    const url = state.doc ? doc.URL : new URL(state.template.dataset.ccSrc, location.href).href;
+    // 原生 HTML 的校验值必须来自实际导航，而不是在 load 后另取一份可能更新的源码。
+    const timing = state.doc && state.host.contentWindow.performance.getEntriesByType('navigation')[0];
+    const validator = state.doc ? timing?.serverTiming?.find(row => row.name === 'pp-etag') : null;
+    const etag = state.doc ? (validator ? decodeURIComponent(validator.description) : '') : state.etag;
+    const res = await fetch(url, { cache: 'no-store', headers: !force && etag ? { 'If-None-Match': etag } : {} });
+    if (res.status === 304) return; // 不拆 DOM，也不失效样式缓存。
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    if (state.doc) {
+      // 非 pinpoint 响应若没有导航校验值，比较真实文档；内容相同仍不重载。
+      if (!force && !etag && new DOMParser().parseFromString(text, 'text/html').documentElement.isEqualNode(doc.documentElement)) return;
+      replace(state);
+      await new Promise(resolve => {
+        state.host.addEventListener('load', resolve, { once: true });
+        state.host.contentWindow.location.reload();
+      });
+    } else {
+      if (!force && state.settled && text === state.text) { state.etag = res.headers.get('ETag') || ''; return; }
+      state.invalidateCss?.();
+      if (state.settled) replace(state);
+      await mountCard(state.host, text, url);
+      state.etag = res.headers.get('ETag') || '';
+      state.text = text;
+    }
   };
   const pump = () => {
     while (active < 6 && pending.length) {
       const state = pending.shift();
       active++;
-      state.running = true;
-      const mounting = state.doc ? new Promise(resolve => {
-        state.host.addEventListener('load', resolve, { once: true });
-        state.host.contentWindow.location.reload();
-      }) : mountCard(state.host);
-      mounting.finally(() => {
+      state.dirty = false; // 入队后收到的信号由这次检查覆盖；开始后的新信号才需再检查。
+      const force = state.force;
+      state.force = false;
+      refresh(state, force).catch(error => {
+        if (!state.settled) failNote(state.box, error.message);
+        else console.warn('[canvas-card] 保留当前卡片，更新检查失败', error);
+      }).finally(() => {
         active--;
         state.running = false;
         state.settled = true;
         // 在飞时的完成信号只记一笔，当前挂载结束后再取；旧响应不能盖住后继代。
-        if (state.dirty) { reset(state); check(); }
+        if (state.dirty) check();
         pump();
       });
     }
@@ -470,10 +481,12 @@ function initStaticCards() {
   const check = () => {
     for (const state of states) {
       const host = state.host;
-      if (host.dataset.ccStarted || !host.isConnected) continue;
-      const r = host.getBoundingClientRect();
+      if (state.running || (host.dataset.ccStarted && !state.dirty) || !state.fig.isConnected) continue;
+      const r = state.fig.getBoundingClientRect();
       if (r.bottom >= -MARGIN && r.top <= innerHeight + MARGIN && r.right >= -MARGIN && r.left <= innerWidth + MARGIN) {
         host.dataset.ccStarted = '1';
+        state.running = true; // 包含已入队但尚未开始的卡片，避免重复入队。
+        state.dirty = false;
         pending.push(state);
       }
     }
@@ -488,13 +501,22 @@ function initStaticCards() {
   document.addEventListener('scroll', onScroll, { passive: true, capture: true });
   addEventListener('resize', onScroll);
   document.addEventListener('pp:preview-update', ({ detail }) => {
-    rawCssCache.clear();
-    sheetTextCache.clear();
+    let cleared = false;
+    const invalidateCss = () => {
+      if (cleared) return;
+      cleared = true;
+      rawCssCache.clear();
+      sheetTextCache.clear();
+    };
     for (const state of states) {
       if (state.fig.closest('[data-page]')?.dataset.page !== detail.id
         || (detail.screens && !detail.screens.includes(state.fig.dataset.screen))) continue;
-      if (state.running) state.dirty = true;
-      else if (state.settled) reset(state);
+      state.invalidateCss = invalidateCss;
+      // 点名的编译完成仍强刷（包括 HTML 字节没变的外链 CSS）；恢复补刷才走条件请求。
+      if (state.running || state.settled) {
+        state.force ||= !!detail.screens;
+        state.dirty = true;
+      }
       // 尚未加载的卡片不提前请求，首取自然满足新的输入代次。
     }
     check();
