@@ -80,11 +80,18 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
     // 卡片 iframe（doc 帧、回退帧）：只有本篇画布页的帧，annotate=off；帧页里的资源（kit、article.css）只要求都成功。
     // 此外不该有同源请求，也不该有失败。
     const unexpected = sameOrigin.filter((r) => r.main && !(r.path === ARTICLE || r.path.startsWith('/_astro/')
-      || /^\/annotate(\.[0-9a-f]+)?\.js$/.test(r.path) || r.path.startsWith('/annotations') || r.path === '/events'
+      || /^\/prose(\.[0-9a-f]+)?\.js$/.test(r.path) || r.path.startsWith('/annotations') || r.path === '/events'
       || (r.path === '/api/frame' && r.type === 'fetch')
       || (r.search === '?direct' && /\.css$/.test(r.path) && r.type === 'fetch')
       || r.path === '/kits/ios/ios-kit.js'));
     expect(unexpected).toEqual([]);
+    // A6 收紧：文章页主框跑的是正文评论入口 —— 必须请求了 /prose.*.js，且一份
+    // 完整客户端 /annotate.*.js 都没下载（画布浮层 iframe 里的那份是另一份文档，
+    // 不在 r.main 里；静态卡片加载 ios-kit 前 <html data-annotate="off"> 已挡住
+    // kit 的自注入）。这条就是「文章页只加载正文评论」的行为面。
+    const clientBundles = sameOrigin.filter((r) => r.main && r.type === 'script' && /^\/(annotate|prose)(\.[0-9a-f]+)?\.js$/.test(r.path));
+    expect(clientBundles.length).toBeGreaterThan(0);
+    expect(clientBundles.every((r) => /^\/prose(\.[0-9a-f]+)?\.js$/.test(r.path))).toBe(true);
     // 冷启动时 Astro 可能整页重载一次（依赖预构建），帧会请求两遍：比的是请求了哪些帧。
     // 正文里的图（<Figure>）也是 /api/frame：embed=figure（figure.spec.js 测它们的行为）。
     await expect.poll(() => [...new Set(sameOrigin.filter((r) => r.path === '/api/frame').map((r) => r.search))].sort()).toEqual([
