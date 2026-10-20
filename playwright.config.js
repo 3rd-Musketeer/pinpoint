@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
-import { E2E_BASE_URL, E2E_DATA_DIR, E2E_PORT, E2E_REGISTRY, E2E_RUN_SLOT, E2E_SITE_CACHE, E2E_SITE_PORT, E2E_VITE_CACHE } from './e2e/env.js';
+import { E2E_BASE_URL, E2E_DATA_DIR, E2E_PORT, E2E_REGISTRY, E2E_RUN_SLOT, E2E_SITE_CACHE, E2E_SITE_PORT, E2E_VITE_CACHE, E2E_WORKBENCH_DIST } from './e2e/env.js';
+const workbenchMode = process.env.PINPOINT_WORKBENCH_MODE || 'dev';
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
@@ -24,7 +25,7 @@ export default defineConfig({
   },
   webServer: [{
     // 固件（登记表与站点副本）先写好：服务启动时就读登记表（e2e/prepare-fixtures.mjs）。
-    command: `node e2e/prepare-fixtures.mjs && npm run dev:app -- --port ${E2E_PORT}`,
+    command: `node e2e/prepare-fixtures.mjs && ${workbenchMode === 'bundle' ? 'npm run build:workbench && ' : ''}npm run dev:app -- --port ${E2E_PORT}`,
     url: `${E2E_BASE_URL}/health`,
     reuseExistingServer: false,
     gracefulShutdown: { signal: 'SIGTERM', timeout: 3000 },
@@ -40,6 +41,8 @@ export default defineConfig({
       PINPOINT_SITE_CMD: '',
       // 服务的 vite 依赖缓存按轮隔离（e2e/env.js），不和别的实例共用 deps/。
       PINPOINT_VITE_CACHE: E2E_VITE_CACHE,
+      PINPOINT_WORKBENCH_MODE: workbenchMode,
+      PINPOINT_WORKBENCH_DIST: E2E_WORKBENCH_DIST,
     },
   }],
 });

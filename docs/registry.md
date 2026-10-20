@@ -116,6 +116,25 @@ client 只有一份：`src/client/annotate.js`，构建（`src/server/lib/annota
 
 ### 1 · workbench 自己的页面
 
+工作台有两种投递方式，URL 与交互相同（独立打开和文章画布浮层都走 `/workbench/`）：
+
+- 源码开发：缺省走 Vite 现场转译。`PINPOINT_WORKBENCH_MODE=dev npm run dev` 可显式切回，
+  sandbox 和 e2e 的开发组也用这一形态。
+- 打包：`npm run build:workbench` 只编工作台壳与其引用模块，生成 `.tmp/workbench-dist/`，不入 git。
+  `PINPOINT_WORKBENCH_MODE=bundle npm run dev` 使用它；缺产物时启动直接失败，不回落开发模块。
+  `PINPOINT_WORKBENCH_DIST` 可改产物目录（e2e 每端口一份）。发布 worktree 的产物有 `enabled` 标记，
+  后续普通 `pinpoint start/restart` 也沿用打包模式；显式 `PINPOINT_WORKBENCH_MODE` 优先。
+
+壳页 `Cache-Control: no-store`；JS/CSS 文件名带内容 hash，走 `/workbench/assets/` 与永久缓存，
+缺失资源答 404，不回落工作台 HTML。构建先写新资源再原子替换 HTML，保留旧 hash 供已打开的文档使用。
+服务启动时固定该版 HTML，避免下一次构建污染运行中的版本。`ios-kit.css/js` 仍经原内容路由提供，
+`ios-kit.js` 的标注客户端 hash 注入不变。打包工作台仅额外加载 Vite 的事件客户端
+`/@vite/client`，继续接收 `preview:update`、`projects:update`、`registry:update`；
+预览帧仍由原编译器与 `preview-hmr` 更新，不因工作台打包失去 HMR。
+
+`npm run test:e2e` 第一组（含负载降为单组时）默认测打包，第二组测开发模块；
+定向验证可用 `PINPOINT_WORKBENCH_MODE=bundle E2E_PORT=<端口> npm run test:e2e:serial -- <spec>`。
+
 `ios-kit.js` 只在 loopback / `.localhost` 主机上自注入 annotate 客户端（serve 时字面量被换成
 当前哈希地址；退出方式：`<html data-annotate="off">`）。
 独立文档抄同一段尾部脚本，并在不是被嵌入时调 `pinpoint.setFloatingToolbar(true)`。

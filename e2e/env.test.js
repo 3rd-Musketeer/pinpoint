@@ -90,3 +90,20 @@ test('服务的 vite 缓存按轮分家：同一次 ship 的两组各用自己�
   assert.equal(webServerEnv(5399), a.E2E_VITE_CACHE);
   assert.equal(webServerEnv(5419), b.E2E_VITE_CACHE);
 });
+
+test('打包 e2e：构建发生在起服前，产物随端口分家，开发模式保留现场转译', async () => {
+  for (const port of [5399, 5419]) {
+    const env = await loadEnv(port);
+    assert.equal(path.dirname(env.E2E_WORKBENCH_DIST), env.E2E_FIXTURE_DIR);
+    const script = `const c = (await import(${JSON.stringify(new URL('../playwright.config.js', import.meta.url).href)})).default;
+process.stdout.write(JSON.stringify(c.webServer[0]));`;
+    for (const mode of ['dev', 'bundle']) {
+      const config = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+        env: { ...process.env, E2E_PORT: String(port), PINPOINT_WORKBENCH_MODE: mode }, encoding: 'utf8',
+      }));
+      assert.equal(config.env.PINPOINT_WORKBENCH_MODE, mode);
+      assert.equal(config.env.PINPOINT_WORKBENCH_DIST, env.E2E_WORKBENCH_DIST);
+      assert.equal(config.command.includes('build:workbench && npm run dev:app'), mode === 'bundle');
+    }
+  }
+});

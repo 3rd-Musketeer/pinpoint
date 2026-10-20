@@ -1,3 +1,4 @@
+import { createHotContext } from '/@vite/client';
 import { startCanvasDiagnostics } from './canvas-diagnostics.js';
 import { whenStageScrollSettled, scrollStageTo } from './scroll-motion.js';
 // Workbench stage entry（P4 由 workbench.js 正名）— 舞台侧命令式入口与装配：
@@ -822,8 +823,10 @@ registerEmbedPark({
   },
 });
 
-if (import.meta.hot) {
-  import.meta.hot.on('preview:update', function (data) {
+// 生产包仍接收服务的预览 / registry 事件；源码开发沿用本模块自己的 HMR context。
+var previewHot = import.meta.hot || createHotContext('/workbench/');
+if (previewHot) {
+  previewHot.on('preview:update', function (data) {
     if (!boardPanel) return;
     var id = (data && data.id) || wbGet().activePageId;
     // SSE 是唯一失效源：页面变更（含 kit 组件触发全量重编后的逐页通知）失效自己的
@@ -850,14 +853,14 @@ if (import.meta.hot) {
   // pp3：project 里列表那一层变了（文章增删、标题、布局错误；preview-hmr 发）。
   // 左栏「文章」组重读 /api/projects；新文章的画布页要进 manifest.articles 才点得开，
   // 所以清单也重拉一次（只刷左栏，不重摆当前板：板的变化另有 preview:update）。
-  import.meta.hot.on('projects:update', function () {
+  previewHot.on('projects:update', function () {
     loadProjects();
     refreshRegistry();
   });
   // POST /registry/reload（pinpoint add 后由 CLI 触发）：失效 registry-sites
   // 查询并重拉页面清单，新登记的 dir 条目不用手动刷新就出现在 Pages；
   // 当前板随后重摆（条目可能改了路径或 id）。
-  import.meta.hot.on('registry:update', function () {
+  previewHot.on('registry:update', function () {
     // project 条目增删也走这条（pinpoint add --project / remove → POST /registry/reload）。
     loadProjects();
     refreshRegistry().then(function () {

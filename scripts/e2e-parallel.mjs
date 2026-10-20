@@ -115,6 +115,8 @@ function runGroup(index, args) {
     const groupStarted = Date.now();
     const child = spawn(process.execPath, ['node_modules/@playwright/test/cli.js', 'test', ...args, '--workers=1'], {
       cwd: root, stdio: 'inherit', env: {...process.env, E2E_PORT: String(groupPort),
+        // 单组也测正式形态；双组一组 bundle、一组开发模块。显式变量可覆盖两组。
+        PINPOINT_WORKBENCH_MODE: process.env.PINPOINT_WORKBENCH_MODE || (index === 0 ? 'bundle' : 'dev'),
         PLAYWRIGHT_HTML_OPEN: 'never',
         PW_TEST_REPORTER: 'json', PLAYWRIGHT_JSON_OUTPUT_FILE: resultsFile(index)},
     });

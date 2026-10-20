@@ -13,6 +13,7 @@
     "dev": "portless run --name pinpoint npm run dev:app",
     "dev:app": "vite",
     "dev:direct": "npm run dev:app",
+    "build:workbench": "node scripts/build-workbench.mjs",
     "build:tokens": "node scripts/build-tokens.mjs",
     "lint": "oxlint -c .oxlintrc.json --deny-warnings src site/src bin scripts content/kits",
     "test": "npm run lint --silent && node --test",

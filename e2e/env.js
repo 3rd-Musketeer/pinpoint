@@ -36,3 +36,4 @@ export const E2E_SITE_CACHE = path.join(E2E_FIXTURE_DIR, 'site-cache');
 // 别的 worktree 的 e2e、owner 的常驻服务各用各的 deps/。共用时一个实例重建会覆盖另一个已在用的 chunk，
 // 页面里出现多份 React（Invalid hook call，2026-10-15 查清）。
 export const E2E_VITE_CACHE = path.join(E2E_FIXTURE_DIR, 'vite-cache');
+export const E2E_WORKBENCH_DIST = path.join(E2E_FIXTURE_DIR, 'workbench-dist');

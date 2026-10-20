@@ -19,8 +19,10 @@ import workbenchRoutes from './src/server/workbench-routes.js';
 import loopbackListener from './src/server/loopback-listener.js';
 import { createRegistryStore } from './src/server/lib/registry-store.js';
 import { WORKBENCH_DEPS, viteCacheDir } from './src/server/lib/vite-deps.js';
+import { workbenchMode } from './src/server/lib/workbench-bundle.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
+const bundledWorkbench = workbenchMode({ root: ROOT }) === 'bundle';
 
 // One live registry view shared by every consumer (annotate API / sites
 // serving / doc export): POST /registry/reload swaps the snapshot once and
@@ -42,9 +44,9 @@ export default defineConfig({
   // 每个实例自己的依赖缓存，不共用 node_modules/.vite（src/server/lib/vite-deps.js 写了为什么）。
   cacheDir: viteCacheDir({ root: ROOT }),
   // 工作台的第三方依赖启动时一次预构建齐，不等运行时发现新依赖再重建 deps/、换 chunk 名。
-  optimizeDeps: { include: WORKBENCH_DEPS },
+  optimizeDeps: bundledWorkbench ? { noDiscovery: true, include: [] } : { include: WORKBENCH_DEPS },
   // workbenchRoutes 排最前：旧地址先 302 到 /workbench/，不带参数的 / 才轮到文章代理（blog 首页，ADR 0044）。
-  plugins: [workbenchRoutes(), react(), tailwindcss(), articles, annotateApi({ registry: registryStore, root: ROOT, siteStatus: () => articles.devServer.snapshot() }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), projectsApi({ registry: registryStore }), canvasDiagnosticsApi(), exportImageApi(), exportPageHtmlApi({ registry: registryStore }), previewInject(), hmr, contentRoutes(), loopbackListener()],
+  plugins: [workbenchRoutes({ root: ROOT, mode: bundledWorkbench ? 'bundle' : 'dev' }), react(), tailwindcss(), articles, annotateApi({ registry: registryStore, root: ROOT, siteStatus: () => articles.devServer.snapshot() }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), projectsApi({ registry: registryStore }), canvasDiagnosticsApi(), exportImageApi(), exportPageHtmlApi({ registry: registryStore }), previewInject(), hmr, contentRoutes(), loopbackListener()],
   server: {
     port: Number(process.env.PORT) || 5199,
     strictPort: true,
