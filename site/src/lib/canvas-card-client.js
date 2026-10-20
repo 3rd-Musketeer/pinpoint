@@ -271,7 +271,7 @@ function fallbackFrame(host, box, { srcdoc = null, src = null, title = '' }) {
 // 注入内容（r5 B5，固件帧 slowinject/late.jsx），只量一次会把后长出来的部分裁在初始盒子里。
 // 节奏：量一次，需要时相对推迟 300、再 1200 ms（最多三次）；每次量前还等字体与
 // frame-boot，实际时点晚于旧实现的绝对 0 / 300 / 1200 ms（旧实现如此，2026-10-19 重构时只剩一次）。
-export const FRAME_BOOT_WAIT_MS = 3000;
+const FRAME_BOOT_WAIT_MS = 3000;
 const FALLBACK_MEASURE_DELAYS = [300, 1200];
 
 /** 等 root 的 data-frame-boot="done"，到点没来就放行，按当时的尺寸量。 */

@@ -23,7 +23,7 @@
 import { boardRefs, outlineFrames } from '../../workbench/lib/board-refs.js';
 import { parseIndicator } from '../../shared/annotation-indicator.js';
 import { annStatusOf } from '../../shared/ann-status.js';
-import { ENTRY_OR_ARTICLE_ID_SOURCE, parseArticlePageId } from '../../shared/project-ids.js';
+import { ENTRY_OR_ARTICLE_ID_SOURCE, displayAddress, parseArticlePageId } from '../../shared/project-ids.js';
 
 const FRAME_REF_RE = /^([A-Z]+)([1-9][0-9]*)$/;
 const SECTION_REF_RE = /^([A-Z]+)$/;
@@ -33,12 +33,6 @@ const NUM_REF_RE = /^#([1-9][0-9]*)$/;
 // 页 id 可以是文章页 `<project>_<article>`（src/shared/project-ids.js），所以允许一个下划线。
 const CROSS_NUM_REF_RE = new RegExp(`^(${ENTRY_OR_ARTICLE_ID_SOURCE})#([1-9][0-9]*)$`);
 const RANGE_REF_RE = /^#([1-9][0-9]*)-#?([1-9][0-9]*)$/;
-
-/** 页 id → CLI 地址：文章页打斜杠形，其余原样（与 bin/cli/address.js 的 displayAddress 同义）。 */
-function addressOf(pageId) {
-  const ids = parseArticlePageId(pageId);
-  return ids ? `${ids.projectId}/${ids.articleId}` : String(pageId);
-}
 
 /** `<页>#n` 跨页引用 → { pageId, n }；别的形状返回 null。CLI 没给基页时用它的页当基页。 */
 export function parseCrossRef(token) {
@@ -154,10 +148,10 @@ export function resolveRef(token, ctx = {}) {
   const indicator = parseIndicator(raw);
   // @frame / @section 自带页：和这次的目标不是一页时照实说，不拿帧 id、节 id 去目标页上找（找不到会报
   // “画布上没有帧”，碰巧同名还会拍错页）。
-  const otherPage = (what) => ({ kind: 'unknown', token, message: `${raw} 是 ${addressOf(indicator.pageId)} 上的${what}，这次的目标是 ${addressOf(pageId)}：目标写 ${addressOf(indicator.pageId)}，或不写目标、只写 ${raw}` });
+  const otherPage = (what) => ({ kind: 'unknown', token, message: `${raw} 是 ${displayAddress(indicator.pageId)} 上的${what}，这次的目标是 ${displayAddress(pageId)}：目标写 ${displayAddress(indicator.pageId)}，或不写目标、只写 ${raw}` });
   if (indicator && indicator.kind === 'page') {
     if (indicator.pageId === pageId || (ctx.pageIds || []).includes(indicator.pageId)) return { kind: 'page', pageId: indicator.pageId };
-    return { kind: 'unknown', token, message: `没有页 ${addressOf(indicator.pageId)}：${raw}` };
+    return { kind: 'unknown', token, message: `没有页 ${displayAddress(indicator.pageId)}：${raw}` };
   }
   if (indicator && indicator.kind === 'section') {
     if (pageId && indicator.pageId !== pageId) return otherPage('节');

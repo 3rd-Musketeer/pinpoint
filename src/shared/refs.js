@@ -13,6 +13,7 @@
  * resolves here.
  */
 import { refKey, RESERVED_ARTICLE_IDS, sectionLetter } from './project-ids.js';
+import { escHtml } from './esc-html.js';
 export { refKey };
 
 export const REF_RE = /\[\[([^\[\]\n]+?)\]\]/g;
@@ -109,8 +110,7 @@ export function namespaceErrors(project) {
   return errors;
 }
 
-const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
+export const esc = escHtml;
 
 /**
  * One markup for a resolved ref, used by the MDX <Ref> component and by the

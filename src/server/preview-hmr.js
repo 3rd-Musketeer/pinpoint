@@ -24,8 +24,11 @@ import { articlePageId } from '../shared/project-ids.js';
 import { findProject } from './lib/projects.js';
 import { projectEntries } from './lib/registry.js';
 import { isWatchedSource, planPageRecompile } from './lib/recompile-plan.js';
-import { templateOnly } from './template-only.js';
 import { broadcastPreviewUpdate } from './annotate-api.js';
+
+// PREVIEW_TEMPLATE_ONLY=1 keeps compile targets on pure template state, so e2e
+// (playwright.config.js sets it) sees the same targets on every machine.
+const templateOnly = () => !!process.env.PREVIEW_TEMPLATE_ONLY;
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 // previews 分支（M2）：模板页的 components/ 子目录（pp2 的核心输入）与任意

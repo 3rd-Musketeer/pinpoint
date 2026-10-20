@@ -39,6 +39,12 @@ export function parseArticlePageId(pageId) {
   return match ? { projectId: match[1], articleId: match[2] } : null;
 }
 
+/** 页 id → 显示用地址：文章页 id 打斜杠形 `<project>/<article>`，其余原样。 */
+export function displayAddress(pageId) {
+  const ids = parseArticlePageId(pageId);
+  return ids ? `${ids.projectId}/${ids.articleId}` : String(pageId == null ? '' : pageId);
+}
+
 /**
  * 服务已经占用、或保留给 pp3 的 URL 首段：唯一的一份表。project id 不能取这些名字
  * （登记校验与站点读取都用 isReservedProjectId），服务路由也绝不把它们交给站点

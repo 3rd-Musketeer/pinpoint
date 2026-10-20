@@ -14,7 +14,8 @@
  * 解析分两层：parseAddress 只看字面（纯函数，不读盘）；resolveAddress 再对照 registry 与磁盘
  * 判断它指的是什么。斜杠形换成页 id 也只看字面（toPageRef），所以删掉的文章、孤儿桶也能用斜杠形写。
  */
-import { ARTICLE_PAGE_ID_PATTERN, articlePageId, parseArticlePageId, RESERVED_ARTICLE_IDS, sectionLetter } from '../../src/shared/project-ids.js';
+import { ARTICLE_PAGE_ID_PATTERN, articlePageId, displayAddress, parseArticlePageId, RESERVED_ARTICLE_IDS, sectionLetter } from '../../src/shared/project-ids.js';
+export { displayAddress };
 import { ENTRY_ID_PATTERN, PAGE_ID_PATTERN } from '../../src/shared/registry-ids.js';
 import { resolveArticleTarget } from '../../src/server/lib/page-resolve.js';
 import { projectEntries, projectEntry, registryEntry } from '../../src/server/lib/registry.js';
@@ -92,12 +93,6 @@ export function parseAddress(token) {
 /** 这个 token 像不像一枚引用（#n、@…、§n、B3、B、tab:B3）。像引用的不当目标。 */
 export function looksLikeRef(token) {
   return REF_SHAPE_RE.test(String(token || '').trim());
-}
-
-/** 页 id → 显示用地址：文章页 id 打斜杠形，其余原样。 */
-export function displayAddress(pageId) {
-  const ids = parseArticlePageId(pageId);
-  return ids ? `${ids.projectId}/${ids.articleId}` : String(pageId == null ? '' : pageId);
 }
 
 /** 任何目标写法 → 页 id（只看字面；不是目标的样子原样返回）。`p/a#3` → `p_a#3`。 */

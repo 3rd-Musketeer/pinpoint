@@ -60,9 +60,7 @@ export function bootAnnotate() {
   ctx.LEDGER_PATHNAME =
     ctx.FRAME || ctx.CANVAS_MODE
       ? ctx.CANVAS_PAGE
-      : ((typeof window.__pinpointLedger === 'string' && window.__pinpointLedger.charAt(0) === '/')
-          ? window.__pinpointLedger
-          : location.pathname);
+      : location.pathname;
   ctx.LS_KEY = 'pinpoint:' + ctx.ENTRY + ':' + ctx.LEDGER_PATHNAME;
   // 页面标识 = 文件名 + 全路径短哈希（SSOT: src/shared/annotate-page-key.js，内联）；
   // 画布 / 帧实例的账本是固定名 @canvas（不跟工作台 pathname 走，`/` 与

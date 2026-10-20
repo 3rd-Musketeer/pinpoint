@@ -86,7 +86,7 @@ export function overlayDocNext(state, msg) {
  * - open    浮层开着，工作台恢复。
  * 关闭中又打开、预热中打开都走 open；换节不换文档，状态不动。深链落点跳过预热，直接 open。
  */
-export const OVERLAY_PHASES = ['absent', 'warming', 'parked', 'open'];
+const OVERLAY_PHASES = ['absent', 'warming', 'parked', 'open'];
 
 export function overlayPhaseNext(phase, event) {
   const cur = OVERLAY_PHASES.includes(phase) ? phase : 'absent';

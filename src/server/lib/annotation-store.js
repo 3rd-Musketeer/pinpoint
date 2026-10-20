@@ -11,10 +11,6 @@ import {
 import { annotationSlug } from '../../shared/annotation-slug.js';
 import { CANVAS_LEDGER, PROSE_LEDGER } from '../../shared/project-ids.js';
 
-export { annotationSlug };
-
-export { normalizeAnnotation, normalizeDoc, annotationsFromDoc };
-
 /** 画布账本的固定名（storage-unify）：一页的画布 + 嵌入帧标注住
  *  `<pageId>/@canvas.json`。`@` 不在 annotationSlug 的保字符集里，所以这个
  * 名字走专用通道（ledgerKey），绝不过 slug —— 过了会变成 `_canvas.json`，
@@ -22,7 +18,7 @@ export { normalizeAnnotation, normalizeDoc, annotationsFromDoc };
  *  正文评论账本（pp3）：一篇 article 的正文评论住在这篇的桶
  *  `<articlePageId>/@prose.json`，和画布的 `@canvas.json` 同桶、同一套 #n，同样不过 slug。
  *  两个名字定义在 src/shared/project-ids.js。 */
-export { CANVAS_LEDGER, PROSE_LEDGER };
+export { CANVAS_LEDGER };
 
 const FIXED_LEDGERS = new Set([CANVAS_LEDGER, PROSE_LEDGER]);
 

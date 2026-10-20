@@ -202,7 +202,7 @@ export function sendMethodNotAllowed(res, allow = 'GET, HEAD') {
 }
 
 /** 这是不是一次读（sites-api 家规：只有 GET / HEAD 出内容）。 */
-export function isReadMethod(req) {
+function isReadMethod(req) {
   return req.method === 'GET' || req.method === 'HEAD';
 }
 
