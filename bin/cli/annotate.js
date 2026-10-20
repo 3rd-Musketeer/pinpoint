@@ -682,7 +682,15 @@ export async function runShot(argv, io = {}) {
       height: result.height,
       ...(result.truncated ? { truncated: true } : {}),
       ...(result.pending ? { pending: result.pending } : {}),
+      ...(result.errorPanel ? { errorPanel: result.errorPanel } : {}),
     });
+    // R5 B3：拍到的是 .wb-screen-err 错误面板（编译失败的帧）——按错误算，exit 1，
+    // 不让「加载失败」的截图冒充验收证据。
+    if (result.errorPanel) {
+      const message = `截图拍到错误面板（${result.errorPanel}）：${result.out}`;
+      errors.push(message);
+      err(`错误：${message}`);
+    }
     if (!parsed.flags.json) out(`${result.label ? `${result.label} → ` : ''}${result.out} · ${result.width}×${result.height}`);
     if (result.pending) {
       warnings.push(pendingWarning(result));

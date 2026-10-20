@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 
 import { expect, test } from './lib/fixtures.js';
 
-import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY } from './env.js';
+import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
 import { openAnnotated } from './lib/annotate.js';
 import { ppnt } from './lib/cli.js';
@@ -147,5 +147,32 @@ test('pinpoint add (CLI)：dir 条目 reload 后进 Pages，单文件条目开�
     writeRegistryFixture();
     fs.rmSync(tmp, { recursive: true, force: true });
     await page.request.post('/registry/reload');
+  }
+});
+
+test('ppnt shot 对编译失败的帧报错误面板退 1（R5 B3），修好恢复 exit 0', async () => {
+  const site = path.join(E2E_SITES_DIR, 'dir-site-ios');
+  const boardFile = path.join(site, 'board.json');
+  const originalBoard = fs.readFileSync(boardFile, 'utf8');
+  const broken = path.join(site, 'broken.jsx');
+  // 语法错误 → 该屏编译失败，画布把它画成 .wb-screen-err 错误面板。
+  fs.writeFileSync(broken, 'export default function Broken() {\n  return <div><div>;\n}\n');
+  const board = JSON.parse(originalBoard);
+  board.sections[0].screens.push({ id: 'broken', title: 'Broken' });
+  fs.writeFileSync(boardFile, JSON.stringify(board, null, 2));
+  try {
+    const failed = await ppnt(['shot', 'e2e-dir-ios', 'broken'], { expectFail: true });
+    expect(failed.code).toBe(1);
+    expect(failed.stderr).toMatch(/拍到错误面板/);
+    expect(failed.stderr).toMatch(/加载失败/);
+    // 修好源码 → 同一条命令正常出图退 0。
+    fs.writeFileSync(broken, 'export default function Broken() {\n  return <div className="ios-app">修好了</div>;\n}\n');
+    const ok = await ppnt(['shot', 'e2e-dir-ios', 'broken']);
+    expect(ok.code).toBe(0);
+    expect(ok.stderr).not.toMatch(/拍到错误面板/);
+    expect(ok.stdout).toMatch(/broken → .*\.png · \d+×\d+/);
+  } finally {
+    fs.writeFileSync(boardFile, originalBoard);
+    fs.rmSync(broken, { force: true });
   }
 });

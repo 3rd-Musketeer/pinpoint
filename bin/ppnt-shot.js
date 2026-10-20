@@ -84,7 +84,13 @@ export async function renderShots({ origin, pageId, jobs, env = process.env }) {
       fs.writeFileSync(job.out, await response.body());
       const headers = response.headers();
       // --json 的 shots[].width / height 是数字（另两条截图路径都出数字）；HTTP 头是字符串，转掉（CLI 排查 #12）。
-      results.push({ out: job.out, label: job.label || '', width: Number(headers['x-export-width'] ?? 0), height: Number(headers['x-export-height'] ?? 0) });
+      results.push({
+        out: job.out,
+        label: job.label || '',
+        width: Number(headers['x-export-width'] ?? 0),
+        height: Number(headers['x-export-height'] ?? 0),
+        ...(snapshot.errorPanel ? { errorPanel: snapshot.errorPanel } : {}),
+      });
     }
     await context.close();
   } finally {
@@ -119,6 +125,10 @@ async function buildSnapshot(page, job) {
         ? panel.querySelector(`.wb-lib-item[data-ann-section="${CSS.escape(job.sectionId)}"]`)
         : panel.querySelector(`[data-screen="${CSS.escape(job.screenId)}"]`);
     if (!target) throw new Error(`找不到要拍的 ${job.kind}`);
+    // R5 B3：编译失败的帧画着 .wb-screen-err 错误面板（外层 .wb-screen 照带
+    // data-screen，按选择器找得到）。拍下它再报成功，agent 就把「加载失败」
+    // 当验收证据了——检出文本带回，调用方按错误算。
+    const errPanel = target.querySelector('.wb-screen-err');
     // 序号钉：锚点还活着的标注，按元素位置烤进快照（stage 内相对链解析）。
     let overlay = '';
     if (job.marks && job.marks.length) {
@@ -211,6 +221,7 @@ async function buildSnapshot(page, job) {
       background: 'canvas',
       tokens,
       html: hoisted + clone.outerHTML,
+      ...(errPanel ? { errorPanel: (errPanel.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 200) } : {}),
     };
   }, { job, pinCss: PIN_CSS });
 }
