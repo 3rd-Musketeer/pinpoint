@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CARD_SCALE, canvasHref, cardModel, DOC_WIDTHS, frameSrc, looseErrors, pageLedgerName, pageLedgerUrl, pendingCount, badgeText, rowsOnFrame, shellBox } from './canvas-card.js';
+import { CARD_SCALE, cardModel, DOC_WIDTHS, frameSrc, looseErrors, pageLedgerUrl, pendingCount, badgeText, rowsOnFrame, shellBox } from './canvas-card.js';
 import { pageKeyFromPathname } from '../../../src/shared/annotate-page-key.js';
 import { bannerErrors } from './site-errors.js';
 import { articleCanvas, articlePageId } from './projects-source.js';
@@ -48,7 +48,6 @@ test('card model: this section only, urls, meta, errors by section', () => {
   // Canvas outside any Section: articleCanvas reports it page-level (banner), the card renders nothing.
   assert.equal(cardModel(canvas, undefined).stray, true);
   assert.deepEqual(cardModel(canvas, undefined).errors, []);
-  assert.equal(canvasHref('a b'), '/workbench/?page=a%20b');
   assert.equal(frameSrc('p', 'a&b'), '/api/frame?page=p&screen=a%26b&annotate=off&embed=card');
   assert.equal(shellBox('app').mode, 'phone');
   assert.equal(shellBox('lock').mode, 'phone');
@@ -168,7 +167,6 @@ test('卡片宽度和服务端的宽度表是同一组数', () => {
 });
 
 test('HTML 帧的标注账本：账本名按页面地址（src/shared/annotate-page-key.js）；行补上那一帧；卡片模型带 docUrl', () => {
-  assert.equal(pageLedgerName('/sites/p_a/long-page.html'), pageKeyFromPathname('/sites/p_a/long-page.html'));
   assert.equal(pageLedgerUrl('p_a', '/sites/p_a/long-page.html'), `/annotations/${encodeURIComponent(pageKeyFromPathname('/sites/p_a/long-page.html'))}?entry=p_a`);
   const rows = rowsOnFrame({ annotations: [{ id: 'a' }, { id: 'b', screenId: 'kept' }] }, 'long-page');
   assert.deepEqual(rows.map((r) => r.screenId), ['long-page', 'kept']);

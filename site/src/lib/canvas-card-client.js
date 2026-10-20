@@ -15,7 +15,8 @@ import {
   rewriteRootSelector,
   rootCompoundHazard,
 } from './static-card-lib.js';
-import { badgeText, docWidthKey, pageLedgerName, pendingCount, shellBox } from './canvas-card.js';
+import { badgeText, docWidthKey, pendingCount, shellBox } from './canvas-card.js';
+import { pageKeyFromPathname } from '../../../src/shared/annotate-page-key.js';
 import { ledgerFrameRows } from '../../../src/shared/ledger-frames.js';
 import { latestLedgerDocument, readLedgerDocument } from '../../../src/client/lib/ledger-reader.js';
 
@@ -556,18 +557,18 @@ function byPage(cards) {
   return map;
 }
 
-// HTML 帧（一篇文章一张画布，2026-10-15）：那一页的标注在它自己的账本里（canvas-card.js pageLedgerName），
-// 一起读进来、记到那一帧上，卡片头的数含它们。
+// HTML 帧（一篇文章一张画布，2026-10-15）：那一页的标注在它自己的账本里（src/shared/annotate-page-key.js
+// pageKeyFromPathname），一起读进来、记到那一帧上，卡片头的数含它们。
 export async function refreshBadges(cards, refresh = false) {
   await Promise.all([...byPage(cards)].map(async ([page, list]) => {
     const aliases = new Map();
     for (const fig of list.flatMap((card) => [...card.querySelectorAll('.cc-frame[data-doc-url]')])) {
-      const key = pageLedgerName(fig.dataset.docUrl);
+      const key = pageKeyFromPathname(fig.dataset.docUrl);
       if (!aliases.has(key)) aliases.set(key, { url: fig.dataset.docUrl, ids: [] });
       aliases.get(key).ids.push(fig.dataset.screen);
     }
     const pages = [...aliases.values()];
-    const names = ['@canvas', ...pages.map((p) => pageLedgerName(p.url))];
+    const names = ['@canvas', ...pages.map((p) => pageKeyFromPathname(p.url))];
     await Promise.all(names.map((name) => readLedgerDocument('', page, name, refresh).catch(() => null)));
     // 批次只负责等读取完成。某本先解析后还可能收到 SSE，绘制必须同步合并此刻的最新状态。
     const [doc, ...docs] = names.map((name) => latestLedgerDocument('', page, name));

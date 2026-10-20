@@ -6,7 +6,7 @@
 // 直接带 hash 打开文章时关闭只去掉 hash，不离开文章。
 // 画布里换了节（平移、大纲）用 replaceState 跟着换 #canvas=，不多压历史。
 // 修饰键 / 中键点这些入口：照常走链接（顶栏和卡片按钮在新标签页开整页画布，右栏卡片在新标签页开带浮层的文章）。
-import { canvasHref } from './canvas-card.js';
+import { canvasViewHref } from '../../../src/shared/workbench-url.js';
 import { layers } from './layers.js';
 import { canvasHash, embedCanvasSrc, embedMessage, entrySection, overlayDocNext, overlayPhaseNext, parseCanvasHash, prewarmSection } from './canvas-overlay.js';
 import { OV_CLOSE_MS, OV_EASE, OV_OPEN_MS, OV_REDUCED_MS, OV_SCALE, overlayOrigin } from './overlay-motion.js';
@@ -134,7 +134,7 @@ export function initCanvasOverlay() {
     el.kind.textContent = '画布';
     el.num.textContent = card?.dataset.num || '';
     el.title.textContent = card?.dataset.title || sectionId;
-    el.canvas.href = canvasHref(pageId, sectionId);
+    el.canvas.href = canvasViewHref(pageId, sectionId);
     dlg.dataset.ppSection = sectionId;
   }
 

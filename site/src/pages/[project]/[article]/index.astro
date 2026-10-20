@@ -8,7 +8,7 @@ import Figure from '../../../components/Figure.astro';
 import Ref from '../../../components/Ref.astro';
 import { loadSite, assertBuildClean, projectHref } from '../../../lib/site-data.js';
 import { articleCanvas } from '../../../lib/projects-source.js';
-import { canvasHref } from '../../../lib/canvas-card.js';
+import { canvasViewHref } from '../../../../../src/shared/workbench-url.js';
 import { bannerErrors } from '../../../lib/site-errors.js';
 import { renderArticle, syncingResponse } from '../../../lib/render-article.js';
 
@@ -37,7 +37,7 @@ const sections = remarkPluginFrontmatter?.sections || [];
 // 正文里的图（<Figure>）也从这里取（canvas.figures，按 remark 注入的序号）。
 const canvas = await articleCanvas(p.id, a.id);
 Astro.locals.ppCanvas = canvas;
-const canvasView = canvas.pageId && canvas.sections.length ? canvasHref(canvas.pageId) : undefined;
+const canvasView = canvas.pageId && canvas.sections.length ? canvasViewHref(canvas.pageId) : undefined;
 
 // 抽屉：本篇引用到的目标（按 project/名字 合并计数），已有与空 ref 分开。
 const group = (refs) => {

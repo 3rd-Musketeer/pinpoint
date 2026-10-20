@@ -16,16 +16,12 @@ import { pageKeyFromPathname } from '../../../src/shared/annotate-page-key.js';
 export const frameSrc = (pageId, frameId) =>
   `/api/frame?page=${encodeURIComponent(pageId)}&screen=${encodeURIComponent(frameId)}&annotate=off&embed=card`;
 
-/** Workbench canvas view of the article; with a section id it scrolls to that row (M0-D). */
-export const canvasHref = canvasViewHref;
-
 /**
  * An HTML frame's annotations live in their own ledger in the same bucket, named after the page's
  * pathname on the service (the annotate client in that page names it this way).
  */
-export const pageLedgerName = pageKeyFromPathname;
 export const pageLedgerUrl = (pageId, docUrl) =>
-  `/annotations/${encodeURIComponent(pageLedgerName(docUrl))}?entry=${encodeURIComponent(pageId)}`;
+  `/annotations/${encodeURIComponent(pageKeyFromPathname(docUrl))}?entry=${encodeURIComponent(pageId)}`;
 
 /**
  * Rows of an HTML frame's ledger carry no screenId (the page is its own document): stamp the frame id on
@@ -131,7 +127,7 @@ export function cardModel(canvas, sectionId, num = '') {
     shell: section?.shell || '',
     box: shellBox(section?.shell),
     frames,
-    href: pageId ? canvasHref(pageId, sectionId) : '',
+    href: pageId ? canvasViewHref(pageId, sectionId) : '',
     meta: `${frames.length} 帧`,
     errors,
   };

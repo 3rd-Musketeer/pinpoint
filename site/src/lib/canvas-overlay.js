@@ -2,7 +2,7 @@
  * 画布浮层（文章上开整张画布）：纯函数，不碰 DOM。浏览器端是 canvas-overlay-client.js，
  * node --test 守地址契约。契约在 site/README.md「画布浮层」。
  */
-import { canvasHref } from './canvas-card.js';
+import { canvasViewHref } from '../../../src/shared/workbench-url.js';
 
 /** 浮层地址：节、可选的帧与钉子。旧链接的 view 参数按未知参数忽略。 */
 export function canvasHash(sectionId, { frame = '', ann = '' } = {}) {
@@ -37,7 +37,7 @@ export function parseCanvasHash(hash) {
  */
 export function embedCanvasSrc(pageId, sectionId, gen = '') {
   const mark = gen !== '' && gen != null ? `&gen=${Number(gen)}` : '';
-  return `${canvasHref(pageId, sectionId)}&embed=overlay${mark}`;
+  return `${canvasViewHref(pageId, sectionId)}&embed=overlay${mark}`;
 }
 
 /** 工作台嵌入版发来的消息（src/workbench/embed.js EMBED_MESSAGE_SOURCE）；别的消息 → null。

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { refreshBadges, sheetText, waitForFrameBoot } from './canvas-card-client.js';
-import { pageLedgerName } from './canvas-card.js';
+import { pageKeyFromPathname } from '../../../src/shared/annotate-page-key.js';
 import { readLedgerDocument, rememberLedgerDocument } from '../../../src/client/lib/ledger-reader.js';
 
 test('整批读取等待邻接账本期间收到 SSE，绘制时按每本账本的最新版合并', async (t) => {
@@ -9,7 +9,7 @@ test('整批读取等待邻接账本期间收到 SSE，绘制时按每本账本�
     await t.test(updated, async (t) => {
       const entry = 'neighbor-' + updated;
       const url = '/sites/' + entry + '/long.html';
-      const html = pageLedgerName(url);
+      const html = pageKeyFromPathname(url);
       const requests = new Map();
       t.mock.method(globalThis, 'fetch', (url) => new Promise((resolve) => {
         requests.set(decodeURIComponent(new URL(url).pathname.split('/').pop()), resolve);

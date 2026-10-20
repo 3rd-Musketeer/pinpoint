@@ -2,6 +2,7 @@
 // 以及操作提示 toast。导出 bind_sidebar、init_sidebar、installSidebar、
 // toggleSidebar、closeAnnotation、setStatusFilter 等。
 import { ANN_FILTERS, annFilterCounts, annFilterRows, annStatusLabel, annStatusOf, filterIncludesStatus, isClosed, writeAnnFilter } from '../../shared/ann-status.js';
+import { workbenchHref } from '../../shared/workbench-url.js';
 import { readingBodyHtml } from '../../shared/annotate-bubble.js';
 import { readingSegments } from '../../shared/annotation-indicator.js';
 import { annRowModel, annRowPreview } from '../../shared/ann-row.js';
@@ -32,7 +33,7 @@ export function init_sidebar() {
 export function installSidebar() {
   if (ctx.btnList) ctx.btnList.addEventListener('click', function () { toggleSidebar(); });
   if (ctx.btnWorkbench) ctx.btnWorkbench.addEventListener('click', function () {
-    window.open((ctx.SERVER || location.origin) + '/workbench/', '_blank', 'noopener');
+    window.open((ctx.SERVER || location.origin) + workbenchHref(), '_blank', 'noopener');
   });
   ctx.updateListeners.push(renderSidebar);
   (function () {
