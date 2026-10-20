@@ -1,6 +1,7 @@
 import { expect, test } from './lib/fixtures.js';
 
 import { proseSettled } from './lib/prose.js';
+import { captureMotion } from './lib/motion.js';
 import { waitNoReload } from './site-settle.js';
 
 // 窄屏目录入口（site/README.md「目录」）：1180px 以下目录栏隐藏，正文顶上一条
@@ -118,17 +119,9 @@ test('目录 popover：打开 120ms、4px 位移；减少动态效果只淡入',
   await page.setViewportSize({ width: 1024, height: 768 });
   await openArticle(page);
 
-  const motion = () => page.evaluate(() => {
-    const anim = document.querySelector('[data-toc-nav]').getAnimations().find((a) => a.playState !== 'finished');
-    if (!anim) return null;
-    const frames = anim.effect.getKeyframes().map((f) => ({ opacity: String(f.opacity), transform: f.transform }));
-    return { duration: anim.effect.getTiming().duration, frames };
-  });
-
   await test.step('打开', async () => {
     await page.emulateMedia({ reducedMotion: 'no-preference' });
-    await entry(page).locator('[data-toc-toggle]').click();
-    const m = await motion();
+    const { motion: m } = await captureMotion(pop(page), () => entry(page).locator('[data-toc-toggle]').click());
     expect(m.duration).toBe(120);
     expect(m.frames[0].transform).toBe('translateY(-4px)');
     expect(m.frames[1].transform).toBe('translateY(0px)');
@@ -138,8 +131,7 @@ test('目录 popover：打开 120ms、4px 位移；减少动态效果只淡入',
 
   await test.step('减少动态效果', async () => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await entry(page).locator('[data-toc-toggle]').click();
-    const m = await motion();
+    const { motion: m } = await captureMotion(pop(page), () => entry(page).locator('[data-toc-toggle]').click());
     expect(m.duration).toBe(80);
     expect(m.frames.map((f) => f.transform)).toEqual(['none', 'none']);
     expect(m.frames.map((f) => f.opacity)).toEqual(['0', '1']);
