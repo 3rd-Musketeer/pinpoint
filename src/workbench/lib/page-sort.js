@@ -1,4 +1,6 @@
 // 页面时间排序：添加、源文件修改、标注变动独立记录；最近取三者最大值。
+import { pageDisplayTitle } from './page-groups.js';
+
 export var PAGE_SORT_GROUPS = [
   ['name', 'name-desc'],
   ['added', 'added-asc'],
@@ -23,7 +25,7 @@ export function normalizePageSort(value) {
   return PAGE_SORTS.indexOf(value) >= 0 ? value : 'default';
 }
 
-export function sortPages(pages, sort) {
+export function sortPages(pages, sort, pageNames) {
   var list = pages.slice();
   var basis = sort?.split('-')[0];
   if (['added', 'updated', 'annotated'].includes(basis)) {
@@ -34,8 +36,11 @@ export function sortPages(pages, sort) {
       return sort.endsWith('-asc') ? at - bt : bt - at;
     });
   } else if (basis === 'name') {
+    // 排序键跟行显示同一来源（pageDisplayTitle：改名优先）——否则行写着「阿妹」
+    // 排位却按登记名算，看到的名字与排位对不上（r5b B5）。
+    var name = (page) => pageDisplayTitle(page, pageNames);
     list.sort(function (a, b) {
-      var comparison = String(a.title || a.id).localeCompare(String(b.title || b.id), 'zh');
+      var comparison = name(a).localeCompare(name(b), 'zh');
       return sort === 'name-desc' ? -comparison : comparison;
     });
   }

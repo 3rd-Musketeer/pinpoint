@@ -74,3 +74,16 @@ test('时间正反序都把未知值放末尾，行内时间保持所选依据',
   }
   assert.deepEqual(sortPages([{ id: 'A' }, { id: 'Z' }], 'name-desc').map(p => p.id), ['Z', 'A']);
 });
+
+// r5b B5：名称排序的键跟行显示同一来源（pageNames 优先），否则行写着「AAA开头」
+// 排位却在丙页后面。
+test('sortPages name 档认重命名的显示名', () => {
+  const pages = [{ id: 'bing', title: '丙页' }, { id: 'second', title: 'secondpage' }, { id: 'fan', title: '范例：冲一杯' }];
+  const names = { second: '阿妹' };
+  // zh 排序按拼音：阿妹(ā) < 丙页(bǐng) < 范例(fàn) —— 改名后行显示的名字决定排位。
+  assert.deepEqual(sortPages(pages, 'name', names).map((p) => p.id), ['second', 'bing', 'fan']);
+  assert.deepEqual(sortPages(pages, 'name', names).map((p) => p.id).slice().reverse(),
+    [...sortPages(pages, 'name-desc', names).map((p) => p.id)]);
+  // 没传改名时行为同旧：登记名做键。
+  assert.deepEqual(sortPages(pages, 'name').map((p) => p.id), ['bing', 'fan', 'second']);
+});

@@ -82,6 +82,7 @@ import {
   pageKindKey
 } from '../lib/page-groups.js';
 import { readPrefs, savePrefs } from '../lib/prefs.js';
+import { isComposingKey } from '../../shared/keys.js';
 import { SettingsView } from './SettingsView.jsx';
 import { ArticlesSection } from './ArticlesSection.jsx';
 import { WbIcon } from './WbIcon.jsx';
@@ -163,6 +164,11 @@ function PageRow(props) {
   }
 
   function onRenameKey(e) {
+    // 组字中的 Enter / Esc 是输入法在确认候选，不是保存 / 取消（r5b B10：全库
+    // 唯一漏输入法守卫的输入框）。读 nativeEvent：React 合成事件不透传
+    // isComposing（只拷 key / keyCode 等固定字段），Safari 组字 Enter 靠
+    // keyCode 229 也读得到，Firefox（keyCode 13 + isComposing）只有原生事件上有。
+    if (isComposingKey(e.nativeEvent)) return;
     if (e.key === 'Enter') {
       e.preventDefault();
       if (inputRef.current) inputRef.current.blur();
@@ -377,18 +383,20 @@ export function Sidebar() {
     return function () { releasePark(); clearInterval(timer); };
   }, []);
   var manifest = useWorkbenchStore(function (s) { return s.pageManifest; });
+  var pageNames = useWorkbenchStore(function (s) { return s.pageNames; });
 
   // 列表只在清单 / 当前页 / 排序变了才重算 —— 每分钟的时间 tick 会让整栏
   // 重渲染，别让它顺带重排一遍。
   var derived = useMemo(function () {
     var pages = manifestPages().map(page => ({ ...page, ...manifest?.pageTimes?.[page.id] }));
+    var kept = pages.filter(function (page) { return !pagePreferences.archived[page.id]; });
     return {
-      pages: pages.filter(function (page) { return !pagePreferences.archived[page.id]; }),
-      pinned: pages.filter(function (page) { return !pagePreferences.archived[page.id] && pagePreferences.pinned[page.id]; }),
+      pages: kept,
+      pinned: kept.filter(function (page) { return pagePreferences.pinned[page.id]; }),
       archived: pages.filter(function (page) { return pagePreferences.archived[page.id]; }),
-      listed: sortPages(pages.filter(function (page) { return !pagePreferences.archived[page.id] && !pagePreferences.pinned[page.id]; }), sort)
+      listed: sortPages(kept.filter(function (page) { return !pagePreferences.pinned[page.id]; }), sort, pageNames)
     };
-  }, [manifest, activePageId, sort, pagePreferences]);
+  }, [manifest, activePageId, sort, pagePreferences, pageNames]);
   // 最近与页面共用归档、置顶筛选。
   var recent = activityRows(derived.pages);
 
