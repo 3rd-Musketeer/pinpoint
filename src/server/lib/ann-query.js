@@ -21,6 +21,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { annStatusOf } from '../../shared/ann-status.js';
+import { articleHref } from '../../shared/project-ids.js';
 import { bucketOnDisk, dataRoot } from './annotate-data-dir.js';
 import { CANVAS_LEDGER } from './annotation-store.js';
 import { collectPageOrphans, readBucketLedgers } from './orphans.js';
@@ -153,7 +154,7 @@ function articleInfo(target) {
     articleId: target.articleId,
     title,
     file: target.articleFile,
-    url: `/${target.projectId}/${target.articleId}/`,
+    url: articleHref(target.projectId, target.articleId),
   };
 }
 

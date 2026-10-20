@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 import { boardRefs } from '../../workbench/lib/board-refs.js';
 import { CANVAS_ERROR_CODES, frameFileReaders, parseArticleCanvas, resolveRootFrame } from './article-canvas.js';
-import { PROJECT_ROOT_SEGMENT, PROJECT_SOURCE_SEGMENT, articlePageId, rootFrameSrc } from '../../shared/project-ids.js';
+import { PROJECT_ROOT_SEGMENT, PROJECT_SOURCE_SEGMENT, articleHref, articlePageId, rootFrameSrc } from '../../shared/project-ids.js';
 import { isArticleError, isFigureError } from '../../shared/project-errors.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
@@ -98,7 +98,7 @@ function deriveArticleBoardUncached(target) {
   const board = {
     title: fm.data.title || target.articleId,
     // 画布从哪篇文章派生：工作台与 CLI 可以据此指回正文。
-    article: { project: target.projectId, id: target.articleId, url: `/${target.projectId}/${target.articleId}/` },
+    article: { project: target.projectId, id: target.articleId, url: articleHref(target.projectId, target.articleId) },
     sections: parsed.sections.map((section) => ({
       id: section.id,
       title: section.title,
@@ -210,7 +210,7 @@ export function articlePageRows(registry) {
       title,
       project: target.projectId,
       article: target.articleId,
-      url: `/${target.projectId}/${target.articleId}/`,
+      url: articleHref(target.projectId, target.articleId),
     };
   });
 }

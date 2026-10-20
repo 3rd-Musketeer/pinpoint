@@ -17,7 +17,7 @@ import { staleBucketProblem } from '../../src/server/lib/orphans.js';
 import { addRegistryEntry } from '../../src/server/lib/registry-store.js';
 import { defaultEntries, projectEntry } from '../../src/server/lib/registry.js';
 import { PROJECT_CONTENT_DIR, readProjectJson } from '../../src/server/lib/projects.js';
-import { articlePageId, isReservedProjectId, RESERVED_ARTICLE_IDS } from '../../src/shared/project-ids.js';
+import { articleHref, articlePageId, isReservedProjectId, RESERVED_ARTICLE_IDS } from '../../src/shared/project-ids.js';
 import { ENTRY_ID_PATTERN } from '../../src/shared/registry-ids.js';
 import { formatProjectError } from '../../src/shared/project-errors.js';
 
@@ -279,7 +279,7 @@ async function newArticle(parsed, io) {
     return 1;
   }
   const origin = (env.PINPOINT_ORIGIN || DEFAULT_ORIGIN).replace(/\/+$/, '');
-  const url = `${origin}/${plan.projectId}/${plan.articleId}/`;
+  const url = `${origin}${articleHref(plan.projectId, plan.articleId)}`;
   const next = [
     `写正文和帧：${plan.file}（帧写在 ${plan.dir}${path.sep}<帧 id>.jsx，在节里用 <Canvas frames={["<帧 id>"]} /> 列出来）`,
     `验证：ppnt check ${plan.address}`,

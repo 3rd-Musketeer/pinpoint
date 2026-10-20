@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { articleCanvasReadUrl, articleGroups, articleReadUrl, articleRowTooltip, projectErrorTooltip } from './article-groups.js';
+import { articleCanvasReadUrl, articleGroups, articleRowTooltip, projectErrorTooltip } from './article-groups.js';
+import { articleHref } from '../../shared/project-ids.js';
 
 const PROJECTS = [
   {
@@ -50,8 +51,8 @@ test('projectErrorTooltip：前三条逐行，多的折成一句；没有错误�
     '布局错误 5 条：\na\nb\nc\n…还有 2 条（ppnt list <project> 看全部）');
 });
 
-test('articleReadUrl / articleRowTooltip', () => {
-  assert.equal(articleReadUrl('demo', 'flow'), '/demo/flow/');
+test('articleHref（shared）/ articleRowTooltip', () => {
+  assert.equal(articleHref('demo', 'flow'), '/demo/flow/');
   const [demo] = articleGroups(PROJECTS, ['demo_flow']);
   assert.equal(articleRowTooltip(demo, demo.articles[0]), '流程\n一句摘要\ndemo / flow');
   assert.equal(articleRowTooltip(demo, demo.articles[1]), '笔记\ndemo / notes · 没有画布，点开正文');

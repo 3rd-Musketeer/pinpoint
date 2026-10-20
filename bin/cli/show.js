@@ -17,7 +17,7 @@ import { projectEmptyRefs } from '../../src/server/lib/article-check.js';
 import { figureDistErrors } from '../../src/server/lib/page-compiler.js';
 import { resolveArticleTarget } from '../../src/server/lib/page-resolve.js';
 import { findProject } from '../../src/server/lib/projects.js';
-import { articleHref, articlePageId, parseFrameSrc } from '../../src/shared/project-ids.js';
+import { articleHref, articlePageId, parseFrameSrc, projectHref } from '../../src/shared/project-ids.js';
 import { formatProjectError, isArticleError } from '../../src/shared/project-errors.js';
 
 import { DEFAULT_ORIGIN, ioOf } from './core.js';
@@ -135,7 +135,7 @@ export function projectModel({ registry, project, contextOf, origin }) {
       sections: outline.length,
       frames: outline.reduce((sum, row) => sum + row.frames.length, 0),
       open: rows.filter(isOpen).length,
-      url: `${origin}/${project.id}/${article.id}/`,
+      url: `${origin}${articleHref(project.id, article.id)}`,
       file: article.file,
     };
   });
@@ -143,8 +143,8 @@ export function projectModel({ registry, project, contextOf, origin }) {
     id: project.id,
     title: project.title,
     root: project.root,
-    url: `${origin}/${project.id}/`,
-    llms: `${origin}/${project.id}/llms.txt`,
+    url: `${origin}${projectHref(project.id)}`,
+    llms: `${origin}${projectHref(project.id)}llms.txt`,
     articles,
     concepts: project.concepts.map((concept) => ({ name: concept.name, status: concept.status || '', boundary: concept.boundary || '', file: concept.file })),
     emptyRefs: projectEmptyRefs(registry, project.id),

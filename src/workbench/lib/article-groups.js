@@ -3,14 +3,11 @@
 // （manifest.articles）；输出是 project → 文章 两层，Sidebar 只照着画。
 
 import { formatProjectError } from '../../shared/project-errors.js';
+import { articleHref } from '../../shared/project-ids.js';
 
 /** 布局错误 tooltip 列几条；多出来的写“还有 N 条”。 */
 var ARTICLE_ERROR_TOOLTIP_MAX = 3;
 
-/** 文章正文的地址：/<project>/<article>/（站点路由，docs/projects.md）。 */
-export function articleReadUrl(projectId, articleId) {
-  return '/' + encodeURIComponent(projectId) + '/' + encodeURIComponent(articleId) + '/';
-}
 
 /**
  * 画布视图回正文的地址（横条的“阅读正文”）：row 是清单 manifest.articles 里这一页的那一行
@@ -21,7 +18,7 @@ export function articleReadUrl(projectId, articleId) {
  */
 export function articleCanvasReadUrl(row, board, sectionId) {
   if (!row || row.kind !== 'article') return null;
-  var base = row.project && row.article ? articleReadUrl(row.project, row.article) : row.url;
+  var base = row.project && row.article ? articleHref(row.project, row.article) : row.url;
   if (!base) return null;
   var sections = (board && Array.isArray(board.sections)) ? board.sections : [];
   var known = !!sectionId && sections.some(function (section) { return section && section.id === sectionId; });
@@ -67,7 +64,7 @@ export function articleGroups(projects, canvasPageIds) {
           title: article.title || article.id,
           summary: article.summary || '',
           pageId: pageId,
-          readUrl: articleReadUrl(project.id, article.id),
+          readUrl: articleHref(project.id, article.id),
           canvas: !!pageId && article.canvasSections > 0 && known.has(pageId)
         };
       })
