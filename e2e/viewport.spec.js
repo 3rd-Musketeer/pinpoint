@@ -96,7 +96,9 @@ test('文档条目：默认窗口 1:1 铺满，切手机缩到可用高九成居
   await setViewport(page, 'phone');
 
   // 还是文档形态（html），只是 data-viewport=phone；iframe 还是那一个 src。
-  expect(await stageForm(page)).toBe('html');
+  // 切换视口 = 重装当前板（pages.js）：#wbroot 重建那一瞬 data-page-mode 不在，
+  // 直读会拿到 null（首跑实测）。轮询到它回来再断言——断言的是形态没变，不是读的时机。
+  await expect.poll(() => stageForm(page)).toBe('html');
   expect(await rootViewport(page)).toBe('phone');
   const screen = page.locator('#wb-board-panel [data-screen="doc"]');
   await expect(screen).toHaveClass(/wb-screen--phone-doc/);

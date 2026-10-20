@@ -951,9 +951,20 @@ test('画布浮层：停驻跨过整分钟，工作台不再排定时器', async
     win.setInterval = function (...args) { counts.interval += 1; return orig.interval.apply(this, args); };
     win.__minuteProbe = { counts, restore: () => { win.setTimeout = orig.timeout; win.setInterval = orig.interval; } };
   });
-  // 先快进 3 秒把「停驻前已排下」的尾巴烧掉（诊断 persist/upload 2s、几何落盘 600ms
-  // 等；保存与 outbox 按契约停驻期间照常落盘，不算停驻期排程），清零后再量 65 秒。
-  await page.clock.runFor(3_000);
+  // 先把「停驻前已排下」的尾巴烧干净（诊断 persist/upload 2s、几何落盘 600ms、重试 3s
+  // 等——保存与 outbox 按契约停驻期间照常落盘，不算停驻期排程）：一轮轮快进 3 秒，
+  // 哪一轮零新增才算烧完；尾巴里若有自续排的循环，这里会一直烧下去直到 180s 超时，
+  // 那正是这条门要守的回归。
+  let last = -1;
+  for (;;) {
+    await page.clock.runFor(3_000);
+    const now = await page.evaluate(() => {
+      const c = window.pinpointOverlay.frame().contentWindow.__minuteProbe.counts;
+      return c.timeout + c.interval;
+    });
+    if (now === last) break;
+    last = now;
+  }
   await page.evaluate(() => {
     const probe = window.pinpointOverlay.frame().contentWindow.__minuteProbe;
     probe.counts.timeout = 0; probe.counts.interval = 0;
