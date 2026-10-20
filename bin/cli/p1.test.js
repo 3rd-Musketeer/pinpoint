@@ -531,3 +531,26 @@ test('D7：两个 sandbox 创建同名默认文章，源码与登记路径各在
   }
   assert.ok(!fs.existsSync(globalNotes));
 });
+
+test('dev --sandbox：spawn 发 error（npm 不在 PATH）立刻失败退 1，不裸栈也不白等 90s', async (t) => {
+  const dataDir = path.join(tempDir(t), 'box');
+  const child = Object.assign(new EventEmitter(), { pid: undefined, exitCode: null });
+  const rec = recorder();
+  const killed = [];
+  const runPromise = run(['dev', '--sandbox', dataDir], {
+    ...rec.io,
+    env: {},
+    portFree: async () => true,
+    spawnSandbox: () => child,
+    requestFn: async () => { throw new Error('should not poll'); },
+    onSignal: () => {},
+    killGroup: (pid, signal) => { killed.push([pid, signal]); setImmediate(() => child.emit('exit', null, signal)); },
+    // 就绪轮询的间歇要让出宏任务：error 事件在轮询之间到达（真实 sleep 是定时器）。
+    sleep: () => new Promise((resolve) => setImmediate(resolve)),
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  child.emit('error', Object.assign(new Error('spawn npm ENOENT'), { code: 'ENOENT' }));
+  assert.equal(await runPromise, 1);
+  assert.match(rec.err.join('\n'), /spawn npm ENOENT/);
+  assert.deepEqual(killed.length, 1, '收尾照常停进程组');
+});

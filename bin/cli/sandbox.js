@@ -151,13 +151,22 @@ export function envFileText(vars) {
 function spawnSandbox({ env, cwd, logFile }) {
   const log = fs.openSync(logFile, 'a');
   fs.writeSync(log, `\n=== ${new Date().toISOString()} ppnt dev --sandbox (cwd ${cwd}) ===\n`);
-  return spawn('npm', ['run', 'dev:app'], { cwd, detached: true, stdio: ['ignore', log, log], env });
+  const child = spawn('npm', ['run', 'dev:app'], { cwd, detached: true, stdio: ['ignore', log, log], env });
+  // npm 不在 PATH 时 spawn 发 'error' 且不会 'exit'：没有监听就是 uncaughtException
+  // 裸栈（CLI 排查 #7）。接住落日志；runDev 里的监听让就绪等待立刻失败。
+  child.once('error', (error) => {
+    try {
+      fs.writeSync(log, `\n[spawn error] ${error.message}\n`);
+    } catch { /* 日志句柄坏了就丢了这行 */ }
+  });
+  return child;
 }
 
-async function waitHealthy(origin, { child, timeoutMs = 90_000, requestFn = requestJson, sleep }) {
+async function waitHealthy(origin, { child, spawnFailed = null, timeoutMs = 90_000, requestFn = requestJson, sleep }) {
   const started = Date.now();
   for (;;) {
     if (child.exitCode !== null && child.exitCode !== undefined) return false;
+    if (spawnFailed && spawnFailed()) return false;
     try {
       const res = await requestFn(`${origin}/health`, { timeoutMs: 1500 });
       if (res.status === 200) return true;
@@ -204,6 +213,10 @@ export async function runDev(argv, io = {}) {
   const childEnv = { ...env, ...vars };
   delete childEnv.PINPOINT_ORIGIN; // 服务自己不读它；留给 CLI
   const child = (io.spawnSandbox || spawnSandbox)({ env: childEnv, cwd: REPO_ROOT, logFile });
+  let spawnError = null;
+  if (child && typeof child.once === 'function') {
+    child.once('error', (error) => { spawnError = error; });
+  }
   let exited = false;
   const exitedPromise = new Promise((resolve) => {
     child.on('exit', (code, signal) => {
@@ -225,10 +238,10 @@ export async function runDev(argv, io = {}) {
   onSignal(() => {
     if (!stopping) stopping = stop();
   });
-  const ready = await waitHealthy(vars.PINPOINT_ORIGIN, { child, sleep, requestFn: io.requestFn || requestJson, timeoutMs: io.readyTimeoutMs || 90_000 });
+  const ready = await waitHealthy(vars.PINPOINT_ORIGIN, { child, spawnFailed: () => spawnError, sleep, requestFn: io.requestFn || requestJson, timeoutMs: io.readyTimeoutMs || 90_000 });
   if (!ready) {
     await stop();
-    err(`错误：隔离服务没起来（${vars.PINPOINT_ORIGIN}/health 一直不答）；日志：${logFile}`);
+    err(`错误：隔离服务没起来（${spawnError ? `${spawnError.message}；` : `${vars.PINPOINT_ORIGIN}/health 一直不答；`}）日志：${logFile}`);
     return 1;
   }
   const info = { dataDir, registry: vars.PINPOINT_REGISTRY, origin: vars.PINPOINT_ORIGIN, port: ports.port, sitePort: ports.sitePort, pid: child.pid, envFile, logFile };

@@ -32,6 +32,13 @@ function spawnService({ cwd, logFile }) {
     stdio: ['ignore', log, log],
     env: process.env,
   });
+  // npm 不在 PATH 时 spawn 发 'error' 且不会 'exit'：没有监听就是 uncaughtException
+  // 裸栈（CLI 排查 #7）。这里接住落进日志，startService 的健康轮询会照常报失败。
+  child.once('error', (error) => {
+    try {
+      fs.writeSync(log, `\n[spawn error] ${error.message}\n`);
+    } catch { /* 日志句柄坏了就丢了这行 */ }
+  });
   child.unref();
   return child;
 }
