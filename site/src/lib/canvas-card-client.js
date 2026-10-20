@@ -269,7 +269,8 @@ function fallbackFrame(host, box, { srcdoc = null, src = null, title = '' }) {
 // 回退帧的尺寸直接量：load（子资源齐）→ 帧文档字体就绪 → frame-boot 跑完（有预览脚本时）
 // → rAF 后量。量不出（stage 还没内容）就再量；量到了也照量 —— 带裸脚本的帧在 load 后才
 // 注入内容（r5 B5，固件帧 slowinject/late.jsx），只量一次会把后长出来的部分裁在初始盒子里。
-// 节奏照旧 0 / 300 / 1200 ms（旧实现如此，2026-10-19 重构时只剩一次）。
+// 节奏：量一次，需要时相对推迟 300、再 1200 ms（最多三次）；每次量前还等字体与
+// frame-boot，实际时点晚于旧实现的绝对 0 / 300 / 1200 ms（旧实现如此，2026-10-19 重构时只剩一次）。
 export const FRAME_BOOT_WAIT_MS = 3000;
 const FALLBACK_MEASURE_DELAYS = [300, 1200];
 
