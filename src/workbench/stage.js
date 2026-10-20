@@ -412,9 +412,6 @@ window.workbench = {
 // 侧栏点击、深链还是失败面板的「回到 Pages」）。空 id（清单未到位）不通知 ——
 // 订阅方要的是「现在在看哪一页」。selector 化（C3）：只有 activePageId 真的
 // 换了才扇出，同值写入与无关字段（标注快照等）不再进这里。
-// API 一挂齐就广播（C1）：annotate 客户端（ledger.js）等它挂 onPageChange，同一
-// 文档里监听先挂就必达 —— 事件在本同步块里、赋值之后发出，先后两种时序都不会漏。
-window.dispatchEvent(new Event('workbench:ready'));
 var pageChangeListeners = [];
 useWorkbenchStore.subscribe(function (s) { return s.activePageId; }, function (id) {
   if (!id) return;
@@ -422,6 +419,10 @@ useWorkbenchStore.subscribe(function (s) { return s.activePageId; }, function (i
     try { pageChangeListeners[i](id); } catch (e) { /* 订阅方自理 */ }
   }
 });
+// API 一挂齐就广播（C1）：annotate 客户端（ledger.js）等它挂 onPageChange，同一
+// 文档里监听先挂就必达 —— 监听表与 store 订阅都要先就位再发事件，ready 回调里
+// 同步 onPageChange 才接得住（r5 W2：原来事件先发，监听表还是 undefined）。
+window.dispatchEvent(new Event('workbench:ready'));
 
 window.workbench.diagnostics = startCanvasDiagnostics(stage, () => wbGet().activePageId);
 if (import.meta.hot) import.meta.hot.dispose(() => window.workbench.diagnostics.stop());
