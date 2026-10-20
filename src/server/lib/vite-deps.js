@@ -29,7 +29,6 @@ export const WORKBENCH_DEPS = [
   '@radix-ui/react-context-menu',
   '@radix-ui/react-dropdown-menu',
   '@radix-ui/react-scroll-area',
-  '@radix-ui/react-slot',
   '@radix-ui/react-toggle-group',
   '@tanstack/react-query',
   'class-variance-authority',
