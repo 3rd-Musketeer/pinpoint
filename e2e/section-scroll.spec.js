@@ -38,6 +38,7 @@ for (const zoom of ['0.75', '1.17']) {
       localStorage.setItem('pinpoint-wb', JSON.stringify(prefs));
     }, zoom);
     await openWorkbench(page, 'page=e2e-ios&mode=ios');
+    await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled()), { timeout: 30_000 }).toBe(true);
     await expect(page.locator('[data-screen="settings"] .ios-cell').first()).toBeVisible();
     await page.evaluate(() => window.pinpoint.clear());
     await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
