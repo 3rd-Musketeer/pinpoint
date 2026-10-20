@@ -2,6 +2,7 @@ import { expect, test } from './lib/fixtures.js';
 
 import { E2E_BASE_URL } from './env.js';
 import { proseSettled } from './lib/prose.js';
+import { captureMotion } from './lib/motion.js';
 import { waitNoReload } from './site-settle.js';
 
 // wiki 面板（site/README.md「弹层与 Esc」）：从顶栏 wiki 按钮右下角展开，
@@ -161,7 +162,7 @@ test('wiki 面板：途中再点从当前值反向；减少动态效果只淡入
 
   await test.step('打开途中再点关闭：新动画从当前呈现值开始，100 ms', async () => {
     // 采样和反向点击放在同一次调用里：两次往返之间 140ms 的动画就播完了，读到的是终点。
-    const mid = await page.evaluate(() => new Promise((resolve) => {
+    const { motion: back, value: mid } = await captureMotion(panel(page), () => page.evaluate(() => new Promise((resolve) => {
       document.getElementById('btn-wiki').click();
       const el = document.getElementById('drawer');
       const watch = () => {
@@ -172,10 +173,9 @@ test('wiki 面板：途中再点从当前值反向；减少动态效果只淡入
         resolve({ opacity: cs.opacity, transform: cs.transform });
       };
       requestAnimationFrame(watch);
-    }));
+    })));
     expect(Number(mid.opacity)).toBeGreaterThan(0);
     expect(Number(mid.opacity)).toBeLessThan(1);
-    const back = await motion(page);
     expect(back.duration).toBe(100);
     const startOpacity = Number(back.frames[0].opacity);
     expect(startOpacity).toBeGreaterThan(0);
@@ -187,7 +187,7 @@ test('wiki 面板：途中再点从当前值反向；减少动态效果只淡入
   await test.step('关闭途中再点打开：从当前不透明度往回走，不从 0 重播', async () => {
     await wikiBtn(page).click();
     await expect.poll(() => motion(page)).toBeNull();
-    const seen = await page.evaluate(() => new Promise((resolve) => {
+    const { motion: again } = await captureMotion(panel(page), () => page.evaluate(() => new Promise((resolve) => {
       document.getElementById('btn-wiki').click();
       const el = document.getElementById('drawer');
       const watch = () => {
@@ -197,8 +197,7 @@ test('wiki 面板：途中再点从当前值反向；减少动态效果只淡入
         resolve(opacity);
       };
       requestAnimationFrame(watch);
-    }));
-    const again = await motion(page);
+    })));
     expect(again?.duration).toBe(140);
     const startOpacity = Number(again.frames[0].opacity);
     expect(startOpacity).toBeGreaterThan(0);
@@ -211,14 +210,12 @@ test('wiki 面板：途中再点从当前值反向；减少动态效果只淡入
 
   await test.step('减少动态效果：打开和关闭都是 80 ms 淡入淡出，没有位移', async () => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await wikiBtn(page).click();
-    const open = await motion(page);
+    const { motion: open } = await captureMotion(panel(page), () => wikiBtn(page).click());
     expect(open.duration).toBe(80);
     expect(open.frames.map((f) => f.transform)).toEqual(['none', 'none']);
     expect(open.frames.map((f) => String(f.opacity))).toEqual(['0', '1']);
     await expect.poll(() => motion(page)).toBeNull();
-    await wikiBtn(page).click();
-    const close = await motion(page);
+    const { motion: close } = await captureMotion(panel(page), () => wikiBtn(page).click());
     expect(close.duration).toBe(80);
     expect(close.frames.map((f) => f.transform)).toEqual(['none', 'none']);
     await expect(panel(page)).toBeHidden();
