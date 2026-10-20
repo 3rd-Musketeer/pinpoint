@@ -389,8 +389,8 @@
      2026-09-05 起只有这一档：圆点纸 / 空白两档与「画布」设置一起退役。 */
   /* R2（ADR 0034）：.wb-stage-wrap 永远不能成为堆叠上下文 —— 本规则不许出现 z-index / transform /
      filter / backdrop-filter / opacity<1 / contain / isolation / will-change / perspective /
-     mix-blend-mode / clip-path / mask。它的孩子（#wbstage、#ann-overlay、#wb-ann-gutter、#wbdock、
-     .wb-canvas-dock）靠 --wb-z 阶梯与 .wb-side / .wb-strip 交错；它一旦成了上下文，这些孩子会被
+     mix-blend-mode / clip-path / mask。它的孩子（#wbstage、#ann-overlay、#wb-ann-gutter、#wbdock）
+     靠 --wb-z 阶梯与 .wb-side / .wb-strip 交错；它一旦成了上下文，这些孩子会被
      整体压到面板之下或之上。
      src/workbench/layering.test.js 解析本规则守这条。 */
   .wb-stage-wrap {
@@ -483,7 +483,6 @@
     display:flex; flex-direction:column; overflow:hidden;
     border-radius:var(--wb-r-glass);
   }
-  .wb:has(#wbann-pop) .wb-canvas-dock { right:calc(var(--wb-chrome-gap) * 2 + var(--wb-annpanel-w)); }
   /* Huge empty margin around the board so the viewer can pan freely */
   .wb-panel {
     --wb-board-pad: 3200px;
@@ -815,7 +814,6 @@
      一起收起，横条本体留着 —— 页名、类型标、模式两段与计数在阅读器里照样要用。 */
   [data-page-mode="html"] #wbcanvas-tools,
   [data-page-mode="html"] #wbcanvas-tools-div,
-  [data-page-mode="html"] .wb-canvas-dock { display:none; }
   [data-page-mode="html"] #wb-board-panel { width:100%; height:100%; padding:0; }
   [data-page-mode="html"] .wb-zoom-wrap {
     width:100%; height:100%; transform:none !important;

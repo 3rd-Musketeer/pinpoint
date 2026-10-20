@@ -106,7 +106,7 @@
 两条结构规则，`src/workbench/layering.test.js` 解析源码守，`e2e/workbench.spec.js` 读计算样式守：
 
 - R1 `.wb { isolation:isolate; }`：外壳自成一个堆叠上下文，页内各档只在它里面比；body 上的 portal 与 top layer 天然在整个外壳之上。
-- R2 `.wb-stage-wrap` 永远不能成为堆叠上下文：不许出现 z-index、transform、filter、backdrop-filter、opacity<1、contain、isolation、will-change、perspective、mix-blend-mode、clip-path、mask。它的孩子（`#wbstage`、`#ann-overlay`、`#ann-chrome`、`#wb-ann-gutter`、`#wbdock`、`.wb-canvas-dock`）靠 z token 与 `.wb-side` / `.wb-strip` 交错。
+- R2 `.wb-stage-wrap` 永远不能成为堆叠上下文：不许出现 z-index、transform、filter、backdrop-filter、opacity<1、contain、isolation、will-change、perspective、mix-blend-mode、clip-path、mask。它的孩子（`#wbstage`、`#ann-overlay`、`#ann-chrome`、`#wb-ann-gutter`、`#wbdock`）靠 z token 与 `.wb-side` / `.wb-strip` 交错。
 
 新元素先挑 token；没有合适的档就在 `scripts/build-tokens.mjs` 的工作台模板里加一档并写注释，不写数字。`src/client/annotate.js` 里 `var(--wb-z-*, N)` 的兜底数必须与 token 同值（独立文档页不加载 `wb-tokens.css`）。overlay 与 chrome 内部（`#ann-marks`、气泡、`#ann-tip`、`#ann-box` 等）的 z-index 只在各自盒子内部比，不进阶梯。workbench 挂法下 `#ann-chrome` 是 `#ann-overlay` 在 `.wb-stage-wrap` 里的兄弟，两者同一父级 inset:0，坐标一致；modal / body 挂载时 chrome 留在 overlay 内随它进 top layer。
 
