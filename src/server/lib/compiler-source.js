@@ -31,18 +31,10 @@ export function requireSource(target, file, extraRoots = []) {
 }
 
 /** 在 esbuild 读任何输入（包括 JS / JSON 等 import）之前守边界。配合 preserveSymlinks 保留别名来源。 */
-export function sourceBoundaryPlugin(target, extraRoots = [], inputMtimes = null, attemptDirs = null) {
+export function sourceBoundaryPlugin(target, extraRoots = [], inputMtimes = null) {
   return {
     name: 'pp-source-boundary',
     setup(build) {
-      if (attemptDirs) build.onResolve({ filter: /^\.\.?\// }, (args) => {
-        // 失败的默认 import 没有 metafile；记查找目录，以便缺失模块出现时重试。
-        for (const dir of new Set([args.resolveDir, path.dirname(path.resolve(args.resolveDir, args.path))])) {
-          try { attemptDirs.set(dir, fs.statSync(dir).mtimeMs); }
-          catch { attemptDirs.set(dir, null); }
-        }
-        return undefined;
-      });
       build.onLoad({ filter: /.*/, namespace: 'file' }, (args) => {
         const file = requireSource(target, args.path, extraRoots);
         // 在 esbuild 读入前记代次；打包后才 stat 会把期间的新保存冒认成旧 HTML 的输入。

@@ -296,9 +296,9 @@ function figureHelperPlugin() {
   };
 }
 
-function pluginsFor(target, inputMtimes = null, resolutions = null, attemptDirs = null) {
+function pluginsFor(target, inputMtimes = null, resolutions = null) {
   const plugins = target && target.kind === 'article' ? [articleComponentsPlugin(target, resolutions), kitJsxPlugin(), figureHelperPlugin()] : [kitJsxPlugin()];
-  return [...plugins, sourceBoundaryPlugin(target, COMPILER_ROOTS, inputMtimes, attemptDirs)];
+  return [...plugins, sourceBoundaryPlugin(target, COMPILER_ROOTS, inputMtimes)];
 }
 
 // 帧 bundle（cjs）里仅有的三个外部 require，映射回进程里已加载的模块 —— 帧与
@@ -395,18 +395,11 @@ function depRecordsFromInputs(target, inputs, exclude, inputMtimes = null) {
   return out;
 }
 
-function attemptedInputs(target, files, dirs) {
-  const pageDir = fs.realpathSync(target.pageDir);
-  return [...files, ...dirs].map(([file, mtimeMs]) => ({ file: path.relative(pageDir, file), mtimeMs }));
-}
-
 async function compileJsxScreen(target, screenId, file) {
   const inputMtimes = new Map();
   const resolutions = [];
-  const attemptDirs = new Map();
   const failed = (row) => ({
     ...row, resolutions,
-    failedInputs: attemptedInputs(target, inputMtimes, attemptDirs),
   });
   let built;
   try {
@@ -424,7 +417,7 @@ async function compileJsxScreen(target, screenId, file) {
       external: ['preact', 'preact/jsx-dev-runtime', 'pp-jsx-runtime/jsx-dev-runtime'],
       metafile: true,
       logLevel: 'silent',
-      plugins: pluginsFor(target, inputMtimes, resolutions, attemptDirs),
+      plugins: pluginsFor(target, inputMtimes, resolutions),
     });
   } catch (error) {
     return failed({ ok: false, error: formatBuildFailure(error), diagnostics: buildFailureDiagnostics(error, target.pageDir) });
@@ -564,7 +557,6 @@ async function compileScreen(target, entry, options = {}) {
   // 帧的 import 依赖（页内组件 / kit 印章）一并记进 sources（review R2）。
   if (result.deps && source) source = { ...source, deps: result.deps };
   if (result.resolutions && source) source = { ...source, resolutions: result.resolutions };
-  if (result.failedInputs && source) source = { ...source, failedInputs: result.failedInputs };
   if (result.ok && !result.document) result.html = injectAssets(result.html, options.assets || {}, target.urlBase);
   return {
     ...result,
@@ -582,7 +574,6 @@ async function compileScreen(target, entry, options = {}) {
 async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
   const inputMtimes = new Map();
   const resolutions = [];
-  const attemptDirs = new Map();
   const { id, comp, props } = entry;
   const pageComp = path.join(target.pageDir, 'components', `${comp}.jsx`);
   const kitComp = path.join(kitJsx, `${comp}.jsx`);
@@ -618,7 +609,7 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
   const sourceRel = path.relative(target.pageDir, sourceAbs).split(path.sep).join('/');
   const sourceMtime = fs.statSync(sourceAbs).mtimeMs;
   const failed = (result) => ({ result, source: {
-    file: sourceRel, mtimeMs: sourceMtime, resolutions, failedInputs: attemptedInputs(target, inputMtimes, attemptDirs),
+    file: sourceRel, mtimeMs: sourceMtime, resolutions,
   } });
   let built;
   try {
@@ -636,7 +627,7 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
       external: ['preact', 'preact/jsx-dev-runtime', 'pp-jsx-runtime/jsx-dev-runtime'],
       metafile: true,
       logLevel: 'silent',
-      plugins: pluginsFor(target, inputMtimes, resolutions, attemptDirs),
+      plugins: pluginsFor(target, inputMtimes, resolutions),
     });
   } catch (error) {
     return failed({ ok: false, error: formatBuildFailure(error) });
@@ -1304,8 +1295,9 @@ export async function loadDistScreenHtml(target, screenId, { signal } = {}) {
     : build?.boardMtimeMs !== fs.statSync(path.join(target.pageDir, 'board.json')).mtimeMs;
   const all = !build || build.tool !== compilerStamp() || boardChanged;
   const result = readDistScreen(target.entryId, screenId);
-  if (all || (invalid && result.kind !== 'error') || resolutionChanged || !source || (primary && source.file !== primary)
-    || [source, ...(source.deps || []), ...(source.failedInputs || [])].some(changed) || !['ok', 'error'].includes(result.kind)) {
+  // 失败只作诊断，不作负缓存：未解析 import 的完整候选由 esbuild 决定。
+  if (all || invalid || resolutionChanged || !source || (primary && source.file !== primary)
+    || [source, ...(source.deps || [])].some(changed) || result.kind !== 'ok') {
     // 进入时满足输入就直接返回，否则只申请一次随后开始的 ticket，不追赶后继保存。
     const queued = pageCompilations.get(key);
     let task;

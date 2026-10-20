@@ -188,7 +188,7 @@ test('R2：kit 回退变为本篇覆盖，watcher 前请求即采用新的解析
   assert.ok(!fallback.text.includes('LOCAL OVERRIDE'));
 });
 
-test('S1：相同失败输入复用错误，主文件或依赖修好后自动编译恢复', async (t) => {
+test('R4：失败请求不做负缓存，主文件或依赖修好后自动编译恢复', async (t) => {
   for (const dependency of [false, true]) await t.test(dependency ? '依赖语法错误' : '帧语法错误', async (t) => {
     const { target, write, request } = fixture(t);
     const file = dependency ? 'components/Label.jsx' : 'home.jsx';
@@ -205,19 +205,19 @@ test('S1：相同失败输入复用错误，主文件或依赖修好后自动编
       return original.call(this, file, ...args);
     });
     for (let i = 0; i < 3; i++) assert.equal((await request('home')).statusCode, 500);
-    assert.equal(writes, 2, '同一失败代次只编一次（build.json 写占位和实际 mtime 两次）');
+    assert.equal(writes, 6, '三次失败请求均重试（每次 build.json 写两次）');
     await compilePage(target, { onlyScreen: 'home' });
     const afterWatcher = writes;
     assert.equal((await request('home')).statusCode, 500);
-    assert.equal(writes, afterWatcher, 'watcher 已尝试的坏代次直接复用错误');
+    assert.equal(writes, afterWatcher + 2, 'watcher 尝试过的失败也不能阻止请求重试');
     write(file, 'export default function Fixed() { return <div className="ios-app">修好后自愈</div>; }');
     assert.ok((await request('home')).text.includes('修好后自愈'));
-    assert.equal(writes, afterWatcher + 2);
+    assert.equal(writes, afterWatcher + 4);
     probe.mock.restore();
   });
 });
 
-test('S1：缺失默认 import 出现后使错误失效，不会永久停在负缓存', async (t) => {
+test('R4：缺失默认 import 每次重试，新增文件后自动恢复', async (t) => {
   const { target, write, request } = fixture(t);
   write('home.jsx', 'import text from "./missing.js"; export default function Home() { return <div className="ios-app">{text}</div>; }');
   assert.equal((await request('home')).statusCode, 500);
@@ -228,9 +228,20 @@ test('S1：缺失默认 import 出现后使错误失效，不会永久停在负�
     return original.call(this, file, ...args);
   });
   assert.equal((await request('home')).statusCode, 500);
-  assert.equal(builds, 0);
+  assert.equal(builds, 2);
   write('missing.js', 'export default "新增模块后自愈";');
   assert.ok((await request('home')).text.includes('新增模块后自愈'));
-  assert.equal(builds, 2);
+  assert.equal(builds, 4);
   probe.mock.restore();
+});
+
+test('R4：已有空目录的 import 失败后新增 index，watcher 前请求立即自愈', async (t) => {
+  const { article, write, request } = fixture(t);
+  fs.mkdirSync(path.join(article, 'pkg'));
+  write('home.jsx', 'import text from "./pkg"; export default function Home() { return <div className="ios-app">{text}</div>; }');
+  assert.equal((await request('home')).statusCode, 500);
+  write('pkg/index.jsx', 'export default "目录入口修好后自愈";');
+  const response = await request('home');
+  assert.equal(response.statusCode, 200);
+  assert.match(response.text, /目录入口修好后自愈/);
 });
