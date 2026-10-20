@@ -30,15 +30,25 @@ export function createWorkbenchHandler({ bundle = null } = {}) {
 }
 
 export default function workbenchRoutes({ root, mode = 'dev', dist } = {}) {
+  let viteServer;
   return {
     name: 'workbench-routes',
     configureServer(server) {
+      viteServer = server;
       const bundle = mode === 'bundle' ? createWorkbenchBundleHandler({ root, dist }) : null;
       const handle = createWorkbenchHandler({ bundle });
       server.middlewares.use((req, res, next) => {
         if (handle(req, res)) return;
         next();
       });
+    },
+    async transform(code, id) {
+      if (mode !== 'bundle' || !id.endsWith('/vite/dist/client/client.mjs')) return null;
+      // Vite 6 的事件客户端另引 @vite/env，默认解析成 node_modules 的开发模块 URL。
+      // 打包壳只额外投递这一份事件运行时：将 Vite 自己转译过的 env 合入，保留 define 注入。
+      const env = await viteServer.transformRequest('/@vite/env');
+      if (!env) throw new Error('Vite 事件客户端的 env 模块不可读');
+      return { code: code.replace("import '@vite/env';", env.code), map: null };
     },
   };
 }

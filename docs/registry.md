@@ -129,7 +129,8 @@ client 只有一份：`src/client/annotate.js`，构建（`src/server/lib/annota
 缺失资源答 404，不回落工作台 HTML。构建先写新资源再原子替换 HTML，保留旧 hash 供已打开的文档使用。
 服务启动时固定该版 HTML，避免下一次构建污染运行中的版本。`ios-kit.css/js` 仍经原内容路由提供，
 `ios-kit.js` 的标注客户端 hash 注入不变。打包工作台仅额外加载 Vite 的事件客户端
-`/@vite/client`，继续接收 `preview:update`、`projects:update`、`registry:update`；
+`/@vite/client`（服务将 Vite 转译过的 env 内联其中，不另取 node_modules 模块），继续接收
+`preview:update`、`projects:update`、`registry:update`；
 预览帧仍由原编译器与 `preview-hmr` 更新，不因工作台打包失去 HMR。
 
 `just promote [rev]` 在临时源码快照里按目标 lockfile 准备依赖、构建工作台，成功且存在产物后才移动

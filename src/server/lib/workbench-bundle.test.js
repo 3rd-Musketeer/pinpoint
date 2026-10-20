@@ -3,8 +3,28 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { createServer } from 'vite';
 import { createWorkbenchBundleHandler, workbenchMode } from './workbench-bundle.js';
+import workbenchRoutes from '../workbench-routes.js';
 import { mockReq, mockRes } from '../test-harness.js';
+
+test('打包事件客户端内联 Vite 的 env，保留转译后的 define 且不再另取开发模块', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-wb-runtime-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, 'index.html'), '<html></html>');
+  const server = await createServer({
+    configFile: false, root, cacheDir: path.join(root, 'cache'),
+    plugins: [workbenchRoutes({ root, dist: root, mode: 'bundle' })],
+    define: { __pinpointRuntimeProbe: JSON.stringify('runtime-define') },
+    optimizeDeps: { noDiscovery: true, include: [] },
+    server: { middlewareMode: true, watch: null },
+  });
+  try {
+    const result = await server.transformRequest('/@vite/client');
+    assert.match(result.code, /runtime-define/);
+    assert.doesNotMatch(result.code, /__DEFINES__|import\s+['"][^'"]*(?:node_modules|@vite\/env)/);
+  } finally { await server.close(); }
+});
 
 test('工作台打包模式：开发缺省、发布标记与显式开关；缺产物启动即失败', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-wb-bundle-'));

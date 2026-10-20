@@ -7,8 +7,8 @@ test('打包工作台：真实页面只取 hash 入口、保留失败通知与�
   page.on('request', req => { if (req.resourceType() === 'script') scripts.push(new URL(req.url()).pathname); });
   await openWorkbenchConnected(page, 'page=example');
   await expect(page.locator('#wb-board-panel .wb-screen').first()).toBeVisible();
-  // 禁的是工作台源码与开发依赖入口；Vite 事件 client 的 env.mjs 是独立运行时，并非工作台模块。
-  expect(scripts.filter(p => /^\/(src|node_modules)\//.test(p))).toEqual([]);
+  // 工作台源码与开发依赖都不能另取；也守住 worktree 软链依赖时的 /@fs/... 路径。
+  expect(scripts.filter(p => /\/(src|node_modules)\//.test(p))).toEqual([]);
   expect(scripts.filter(p => p.startsWith('/workbench/assets/'))).toHaveLength(1);
   const shell = await request.get('/workbench/?page=example&embed=overlay&gen=12');
   expect(shell.headers()['cache-control']).toBe('no-store');
