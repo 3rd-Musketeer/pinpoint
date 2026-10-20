@@ -24,7 +24,7 @@ import path from 'node:path';
 
 import { annotateInjection } from './lib/annotate-snippet.js';
 import { annotateClientSrc, injectAnnotateSrc } from './lib/annotate-bundle.js';
-import { etagMatches } from './lib/etag.js';
+import { sendCacheable } from './lib/http-respond.js';
 import { parseReqUrl } from './lib/req-url.js';
 import { resolveContainedFile, resolveContainedPath } from './lib/servable-file.js';
 import {
@@ -172,17 +172,11 @@ export default function contentRoutes() {
             // APFS 的 mtime 带亚毫秒，取整到毫秒后同一毫秒内的等长重写 ETag 不变，
             // 带旧 ETag 重取会 304 回旧字节。
             const etag = `"${clientSrc}-${kitMtimeMs}"`;
-            res.setHeader('Cache-Control', 'no-cache');
-            res.setHeader('ETag', etag);
-            if (etagMatches(req.headers['if-none-match'], etag)) {
-              res.statusCode = 304;
-              res.end();
-              return;
-            }
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-            res.setHeader('Content-Length', String(Buffer.byteLength(body)));
-            res.end(req.method === 'HEAD' ? undefined : body);
+            sendCacheable(req, res, Buffer.from(body, 'utf8'), {
+              policy: { cacheControl: 'no-cache' },
+              contentType: 'application/javascript; charset=utf-8',
+              etag,
+            });
             return;
           }
         }
