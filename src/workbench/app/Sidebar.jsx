@@ -79,8 +79,7 @@ import {
 import {
   PAGE_KIND_ICONS,
   pageDisplayTitle,
-  pageKindKey,
-  visiblePages
+  pageKindKey
 } from '../lib/page-groups.js';
 import { readPrefs, savePrefs } from '../lib/prefs.js';
 import { SettingsView } from './SettingsView.jsx';
@@ -382,7 +381,7 @@ export function Sidebar() {
   // 列表只在清单 / 当前页 / 排序变了才重算 —— 每分钟的时间 tick 会让整栏
   // 重渲染，别让它顺带重排一遍。
   var derived = useMemo(function () {
-    var pages = visiblePages(sidebarPages().map(page => ({ ...page, ...manifest?.pageTimes?.[page.id] })));
+    var pages = sidebarPages().map(page => ({ ...page, ...manifest?.pageTimes?.[page.id] }));
     return {
       pages: pages.filter(function (page) { return !pagePreferences.archived[page.id]; }),
       pinned: pages.filter(function (page) { return !pagePreferences.archived[page.id] && pagePreferences.pinned[page.id]; }),
@@ -391,7 +390,7 @@ export function Sidebar() {
     };
   }, [manifest, activePageId, sort, pagePreferences]);
   // 最近与页面共用归档、置顶筛选。
-  var recent = activityRows(visiblePages(derived.pages));
+  var recent = activityRows(derived.pages);
 
   return (
     <Fragment>
