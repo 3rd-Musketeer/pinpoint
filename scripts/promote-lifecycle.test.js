@@ -101,7 +101,13 @@ try{await promote({root:process.argv[2],release:process.argv[3],rev:process.argv
     });
     fs.closeSync(fd);
     const done = new Promise(resolve => child.once('exit', (code, signal) => resolve({ code, signal })));
-    t.after(async () => { if (child.exitCode === null && child.signalCode === null) { process.kill(-child.pid, 'SIGKILL'); await done; } });
+    t.after(async () => {
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      // 断言失败也让发布者先收尾，避免它自己的命令组失去父进程。
+      process.kill(-child.pid, 'SIGTERM');
+      const timer = setTimeout(() => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* 已退出 */ } }, 5000);
+      try { await done; } finally { clearTimeout(timer); }
+    });
     return { child, done, gate, output: () => fs.readFileSync(logfile, 'utf8'),
       entered: () => until(() => fs.existsSync(gate + '.entered')),
       unblock: () => fs.writeFileSync(gate + '.release', '') };
@@ -150,6 +156,31 @@ test('promote：信号收尾恢复也失败时打印完整可执行命令', asyn
   assert.equal(fs.existsSync(script), true);
   f.recover(script);
   assert.deepEqual(await f.alive(), { version: 'old', deps: 'old', shell: 'old-shell' });
+});
+
+test('promote：同一规范 release 路径跨进程互斥，A 成功、B 立即拒绝，后续发布重读 prev', async t => {
+  const f = await fixture(t);
+  const a = f.launch({ phase: 'build' });
+  await a.entered();
+  const alias = path.join(f.dir, 'release-alias');
+  fs.symlinkSync(f.rel, alias, 'dir');
+  const b = f.launch({ phase: '', failure: 'health', release: alias });
+  assert.notEqual((await b.done).code, 0);
+  assert.match(b.output(), /发布锁.*持有/);
+  assert.ok(b.output().includes(String(a.child.pid)), '拒绝消息必须说明持有者 PID');
+  assert.equal(fs.existsSync(b.gate + '.entered'), false);
+  assert.equal(f.head(), f.old);
+  assert.equal(f.actions(), 'start:old\n');
+  a.unblock();
+  assert.equal((await a.done).code, 0, a.output());
+  assert.deepEqual(await f.alive(), { version: 'new', deps: 'old', shell: 'new-shell' });
+  assert.equal(f.head(), f.newer);
+  // 新进程拿到已释放的锁后，prev 必须来自 A 成功后的 release。
+  const c = f.launch({ phase: '', rev: f.legacy });
+  assert.equal((await c.done).code, 0, c.output());
+  assert.match(c.output(), new RegExp(`${f.newer.slice(0, 7)} -> ${f.legacy.slice(0, 7)}`));
+  assert.deepEqual(await f.alive(), { version: 'legacy', deps: 'old', shell: 'new-shell' });
+  assert.equal(fs.existsSync(path.join(f.rel, '.tmp/promote.lock')), false);
 });
 
 test('promote 真实生命周期：review 七个场景', async t => {

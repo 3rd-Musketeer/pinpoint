@@ -44,8 +44,31 @@ export async function promote(options = {}) {
 async function promoteTransaction({ root = ROOT, rev = 'main', release, home = os.homedir(), run, recover, log = console.log, warn = console.error }) {
   const git = async (args, cwd = root) => String(await run('git', args, { cwd, encoding: 'utf8' })).trim();
   const main = path.dirname(await git(['rev-parse', '--path-format=absolute', '--git-common-dir']));
-  const rel = release || process.env.PINPOINT_RELEASE_DIR || path.join(main.replace('/repos/', '/repos/.worktrees/'), 'release');
-  if (!fs.existsSync(rel)) throw new Error(`no release worktree at ${rel}`);
+  const requested = release || process.env.PINPOINT_RELEASE_DIR || path.join(main.replace('/repos/', '/repos/.worktrees/'), 'release');
+  if (!fs.existsSync(requested)) throw new Error(`no release worktree at ${requested}`);
+  const rel = fs.realpathSync(requested);
+  fs.mkdirSync(path.join(rel, '.tmp'), { recursive: true });
+  const lock = path.join(rel, '.tmp/promote.lock');
+  let fd;
+  try { fd = fs.openSync(lock, 'wx', 0o600); }
+  catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    let owner = '持有者信息尚未写入';
+    try { owner = fs.readFileSync(lock, 'utf8'); } catch { /* 对方仍占有锁或刚刚退出，不抢锁 */ }
+    throw new Error(`发布锁 ${lock} 已被持有：${owner}；本次立即退出，不排队。若进程已退出，请先核查服务及恢复材料，再手动移除该锁。`);
+  }
+  try {
+    fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, host: os.hostname(), started: new Date().toISOString(), release: rel, root, rev }));
+    // prev、旧壳与依赖状态必须在拿锁之后重新读取，锁一直覆盖健康检查、回滚及日志。
+    return await publishLocked({ root, rev, rel, home, run, recover, log, warn });
+  } finally {
+    fs.closeSync(fd);
+    fs.unlinkSync(lock);
+  }
+}
+
+async function publishLocked({ root, rev, rel, home, run, recover, log, warn }) {
+  const git = async (args, cwd = root) => String(await run('git', args, { cwd, encoding: 'utf8' })).trim();
   if (await git(['status', '--porcelain'], rel)) throw new Error(`${rel} is dirty; the release worktree only moves by promote`);
   if (await git(['branch', '--show-current'], rel)) throw new Error(`${rel} is on a branch; portless would serve it on <branch>.pinpoint.localhost`);
   const target = await git(['rev-parse', '--verify', `${rev}^{commit}`]);
