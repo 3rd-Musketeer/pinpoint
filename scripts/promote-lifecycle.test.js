@@ -175,6 +175,7 @@ test('promote：恢复期第二次组信号打死恢复命令也不留停服', a
   assert.equal(result.signal, null, p.output());
   const output = p.output();
   assert.match(output, /收到 SIGINT，发布已中止/);
+  assert.match(output, /旧服务已恢复并验证健康/);
   assert.doesNotMatch(output, /旧服务恢复失败/);
   assert.deepEqual(await f.alive(), { version: 'old', deps: 'old', shell: 'old-shell' });
   assert.equal(f.head(), f.old);

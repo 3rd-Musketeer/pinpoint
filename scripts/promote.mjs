@@ -176,6 +176,7 @@ async function publishLocked({ root, rev, rel, home, run, recover, log, warn }) 
         }
         await service('start', oldEnv);
         await service('status', oldEnv);
+        warn('promote: 旧服务已恢复并验证健康');
       } catch (rollbackError) {
         // 不清掉尚未恢复的旧依赖副本，给 owner 留恢复材料。
         preservePrepared = true;
