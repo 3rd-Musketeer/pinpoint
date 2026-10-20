@@ -23,7 +23,8 @@ export function installLeaveHooks() {
   onPageLeave(flushOnLeave);
   window.addEventListener('pagehide', closeEvents);
   window.addEventListener('pageshow', function (event) {
-    if (event.persisted && !ctx.eventSource && !ctx.parentEventsOff) connectEvents();
+    // bfcache 恢复时 pagehide 已关掉 SSE，离开期间的推送没收到。和停驻恢复同一条补读。
+    if (event.persisted && !ctx.eventSource && !ctx.parentEventsOff) connectEvents({ catchUp: true });
   });
 }
 
