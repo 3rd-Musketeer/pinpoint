@@ -109,6 +109,11 @@ test.beforeEach(async ({ page, request }) => {
   await seedOwner(request);
 });
 
+test('owner 顶层工作台：真实 IME 组字 Enter 不关 composer，标注落盘后点钉子重开', async ({ page }) => {
+  const scope = await openOwnerBoard(page);
+  await ownerAnnotation(page, scope);
+});
+
 test('owner 浮层：中文组字、保存、点钉子，Esc 按层回正文；帧菜单和红点重置', async ({ page }) => {
   const scope = await openOwnerBoard(page, true);
   await test.step('定位到帧，输入法组字后保存，点击已有钉子重新打开', async () => {
