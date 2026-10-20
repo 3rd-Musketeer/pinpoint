@@ -36,6 +36,7 @@ import {
   PAGE_CACHE_DROP,
   PAGE_CACHE_MOVE,
   renameEntry,
+  reportRewriteSkipped,
   resolveRegistryPath,
   rewriteMovedBucket,
   rewriteSitePrefixUnder,
@@ -159,6 +160,7 @@ export function planArticleMove({ from, to }, { registry, root, manifestIds = []
     htmlPathnames: htmlPathnames(from.project, from.article, registry),
   };
   planMovedBucket(bucketFrom, bucketMove);
+  const rewriteSkipped = [];
   return {
     bucketMove,
     from,
@@ -174,7 +176,8 @@ export function planArticleMove({ from, to }, { registry, root, manifestIds = []
     bucketTo,
     bucketExists: fs.existsSync(bucketFrom),
     bucketToExists: fs.existsSync(bucketTo),
-    sitePrefixFiles: rewriteSitePrefixUnder(fromDir, fromId, toId, { dryRun: true, exts: ARTICLE_SOURCE_EXTS }),
+    rewriteSkipped,
+    sitePrefixFiles: rewriteSitePrefixUnder(fromDir, fromId, toId, { dryRun: true, exts: ARTICLE_SOURCE_EXTS, skipped: rewriteSkipped }),
     refs: inboundRefs(listProjects(registry), from, fromDir),
   };
 }
@@ -229,6 +232,8 @@ async function moveArticle(classified, parsed, io) {
     for (const file of plan.sitePrefixFiles) out(`  /sites/${plan.fromId}/ 换成 /sites/${plan.toId}/：${file}`);
     printRefs(plan, err);
     out('--dry-run：什么都没写，去掉 --dry-run 再跑。');
+    // 预检没读全（权限）：计划不可信，报出来并退 1，不给「都会改到」的假象。
+    if (reportRewriteSkipped(plan.rewriteSkipped, err)) return 1;
     return 0;
   }
 
@@ -236,7 +241,7 @@ async function moveArticle(classified, parsed, io) {
   try {
     recovery = beginMoveRecovery(plan.root, [plan.fromDir, plan.toDir, plan.bucketFrom, plan.bucketTo], { watchContents: [plan.bucketFrom, plan.bucketTo] });
     recovery.step('文章目录', () => moveDir(plan.fromDir, plan.toDir, recovery));
-    const rewritten = recovery.step('文章资源地址', () => rewriteSitePrefixUnder(plan.toDir, plan.fromId, plan.toId, { exts: ARTICLE_SOURCE_EXTS }));
+    const rewritten = recovery.step('文章资源地址', () => rewriteSitePrefixUnder(plan.toDir, plan.fromId, plan.toId, { exts: ARTICLE_SOURCE_EXTS, skipped: plan.rewriteSkipped }));
     let ledgers = [];
     if (plan.bucketExists) {
       recovery.step('标注桶改名', () => {
@@ -297,6 +302,8 @@ async function moveArticle(classified, parsed, io) {
   }
   printRefs(plan, err);
   out(`文章页：${(env.PINPOINT_ORIGIN || 'https://pinpoint.localhost').replace(/\/+$/, '')}/${plan.to.project}/${plan.to.article}/`);
+  // 搬迁已提交，但资源地址改写有读不了的文件：报出来退 1，别让漏改藏在成功消息后面。
+  if (reportRewriteSkipped(plan.rewriteSkipped, err)) return 1;
   return 0;
 }
 

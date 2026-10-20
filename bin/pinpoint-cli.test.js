@@ -3045,3 +3045,81 @@ test('pendingWarning：列出没加载完的 iframe / 图片，多于 5 个时�
   assert.match(many, /^\/x\.png 截图时还有 7 个/);
   assert.ok(many.includes('img 4.png') && !many.includes('img 5.png') && many.endsWith('等 7 个'), many);
 });
+
+test('mv 改 id：扫描有读不了的子树——dry-run 与正式跑都报出来退 1，成功消息不撒谎', async (t) => {
+  const dir = withTempDir(t);
+  const site = makeSite(dir, 'site');
+  fs.writeFileSync(path.join(site, 'card.html'), '<link rel="stylesheet" href="/sites/old/card.css">');
+  const locked = path.join(site, 'locked');
+  fs.mkdirSync(locked);
+  fs.writeFileSync(path.join(locked, 'x.html'), '<p>/sites/old/x</p>');
+  fs.chmodSync(locked, 0o000);
+  try {
+    const dataRoot = path.join(dir, 'data');
+    fs.mkdirSync(path.join(dataRoot, 'old'), { recursive: true });
+    fs.writeFileSync(path.join(dataRoot, 'old', 'page.json'), '{"annotations":[]}');
+    const file = registryWith(dir, [
+      { id: 'pinpoint', kind: 'dir', path: dir },
+      { id: 'old', kind: 'dir', path: site },
+    ]);
+    const env = { PINPOINT_DATA_DIR: dataRoot };
+    const requestFn = (url) => Promise.resolve({ status: 200, json: { ok: true, path: file, entries: 2 } });
+
+    const dry = recorder();
+    assert.equal(await runMv(['mv', 'old', 'fresh', '--registry', file, '--dry-run'], { ...dry.io, cwd: dir, env, requestFn }), 1);
+    assert.match(dry.err.join('\n'), /读不了.*前缀可能没改全/);
+    assert.match(dry.err.join('\n'), /locked/);
+
+    const rec = recorder();
+    assert.equal(await runMv(['mv', 'old', 'fresh', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 1);
+    assert.ok(rec.out.some((line) => /已改 id：old → fresh/.test(line)), '改 id 本身完成');
+    assert.match(rec.err.join('\n'), /读不了.*前缀可能没改全/);
+  } finally {
+    fs.chmodSync(locked, 0o755);
+  }
+});
+
+test('ppnt prune：账本删不动（权限）——报出没删掉的、退 1，不抛栈', async (t) => {
+  const dir = withTempDir(t);
+  const dataRoot = path.join(dir, 'data');
+  const bucket = path.join(dataRoot, 'ghost_page');
+  fs.mkdirSync(bucket, { recursive: true });
+  fs.writeFileSync(path.join(bucket, 'a.json'), '{"page":"a","revision":1,"annotations":[]}');
+  fs.writeFileSync(path.join(bucket, 'b.json'), '{"page":"b","revision":1,"annotations":[]}');
+  const file = registryWith(dir, [{ id: 'pinpoint', kind: 'dir', path: dir }]);
+  const rec = recorder();
+  fs.chmodSync(bucket, 0o500);
+  try {
+    const code = await runPrune(['prune', 'ghost_page', '--registry', file], { ...rec.io, env: { PINPOINT_DATA_DIR: dataRoot } });
+    assert.equal(code, 1);
+    assert.match(rec.err.join('\n'), /prune 删了一部分/);
+    assert.match(rec.err.join('\n'), /a\.json|b\.json/);
+  } finally {
+    fs.chmodSync(bucket, 0o700);
+  }
+});
+
+test('pinpoint remove：登记已删、桶没删动——如实两行，退 1，不抛栈', async (t) => {
+  const dir = withTempDir(t);
+  const dataRoot = path.join(dir, 'data');
+  const bucket = path.join(dataRoot, 'old');
+  fs.mkdirSync(bucket, { recursive: true });
+  fs.writeFileSync(path.join(bucket, '_seq.json'), '{"next":1}');
+  const file = registryWith(dir, [
+    { id: 'pinpoint', kind: 'dir', path: dir },
+    { id: 'old', kind: 'dir', path: dir },
+  ]);
+  const rec = recorder();
+  fs.chmodSync(bucket, 0o500);
+  try {
+    const code = await runRemove(['remove', 'old', '--registry', file], { ...rec.io, env: { PINPOINT_DATA_DIR: dataRoot } });
+    assert.equal(code, 1);
+    const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.deepEqual(doc.entries.map((e) => e.id), ['pinpoint'], '登记条目已删（生效）');
+    assert.ok(fs.existsSync(bucket), '桶还在');
+    assert.match(rec.err.join('\n'), /登记条目已删除（已生效），但桶没清干净/);
+    assert.match(rec.err.join('\n'), /标注桶/);
+  } finally {
+    fs.chmodSync(bucket, 0o700);
+  }
+});

@@ -197,17 +197,23 @@ export function rewriteSitePrefix(text, oldId, newId) {
  * 目录下扩展名在 exts 里的文本文件，逐个交给 visit(full, text)。跳过 node_modules 与
  * 逃出目录的 symlink（那些文件不归这个目录管），按 realpath 记账避免 symlink 成环。
  * 返回 root 的 realpath（调用方算相对路径用）。
+ * 读不了的子树 / 文件交给 onError(路径, 原因)：静默跳过会让「前缀改写」在权限不对的
+ * 目录上报告成功，恰是这类改写最怕的漏改（CLI 排查 #6）。断链 symlink 照旧安静跳过。
  */
-function walkTextFiles(dirPath, exts, visit) {
+function walkTextFiles(dirPath, exts, visit, onError = null) {
   const root = fs.realpathSync(dirPath);
   const seen = new Set();
+  const skip = (what, error) => {
+    if (onError) onError(what, error);
+  };
   const walk = (dir) => {
     if (seen.has(dir)) return;
     seen.add(dir);
     let items;
     try {
       items = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
+    } catch (error) {
+      skip(dir, error);
       return;
     }
     for (const item of items) {
@@ -223,7 +229,8 @@ function walkTextFiles(dirPath, exts, visit) {
       let stat;
       try {
         stat = fs.statSync(full);
-      } catch {
+      } catch (error) {
+        skip(full, error);
         continue;
       }
       if (stat.isDirectory()) {
@@ -234,7 +241,8 @@ function walkTextFiles(dirPath, exts, visit) {
       let text;
       try {
         text = fs.readFileSync(full, 'utf8');
-      } catch {
+      } catch (error) {
+        skip(full, error);
         continue;
       }
       visit(full, text);
@@ -248,15 +256,17 @@ function walkTextFiles(dirPath, exts, visit) {
  * 条目目录下所有 *.html/*.css/*.js（exts 可换，`ppnt mv` 搬文章时用 ARTICLE_SOURCE_EXTS）里的 /sites/<旧 id>/ 换成新前缀。
  * 返回被改写的文件相对路径列表。dryRun 只统计不落盘（预检用）。
  */
-export function rewriteSitePrefixUnder(dirPath, oldId, newId, { dryRun = false, exts = SITE_PREFIX_EXTS, writeFile = fs.writeFileSync } = {}) {
+export function rewriteSitePrefixUnder(dirPath, oldId, newId, { dryRun = false, exts = SITE_PREFIX_EXTS, writeFile = fs.writeFileSync, skipped = null } = {}) {
   const changed = [];
-  const root = walkTextFiles(dirPath, exts, (full, text) => {
+  // onError 在 walkTextFiles 执行期间就会来：root 的 realpath 先算好，别在闭包里摸 TDZ。
+  const root = fs.realpathSync(dirPath);
+  const changedRoot = walkTextFiles(dirPath, exts, (full, text) => {
     const next = rewriteSitePrefix(text, oldId, newId);
     if (!next.changed) return;
     if (!dryRun) writeFile(full, next.text);
     changed.push(full);
-  });
-  return changed.map((full) => path.relative(root, full));
+  }, skipped ? (what, error) => skipped.push({ file: path.relative(root, what), error }) : null);
+  return changed.map((full) => path.relative(changedRoot, full));
 }
 
 /** project 内容目录里会写死文章画布地址的文件类型。 */
@@ -266,15 +276,16 @@ export const ARTICLE_SOURCE_EXTS = new Set(['.jsx', '.js', '.css', '.mdx', '.md'
  * project 的 docs/pinpoint/ 下写死了 `/sites/<project id>_` 的文件（相对 docs/pinpoint/）。
  * rename 不改作者的源文件，只把这些文件列出来让作者自己改（改成相对路径更好）。
  */
-function filesWithArticleSitePrefix(projectRoot, projectId) {
+function filesWithArticleSitePrefix(projectRoot, projectId, skipped = null) {
   const dir = path.join(projectRoot, PROJECT_CONTENT_DIR);
   if (!fs.existsSync(dir)) return [];
   const needle = `/sites/${projectId}_`;
   const hits = [];
-  const root = walkTextFiles(dir, ARTICLE_SOURCE_EXTS, (full, text) => {
+  const root = fs.realpathSync(dir);
+  const walkRoot = walkTextFiles(dir, ARTICLE_SOURCE_EXTS, (full, text) => {
     if (text.includes(needle)) hits.push(full);
-  });
-  return hits.map((full) => path.relative(root, full)).sort();
+  }, skipped ? (what, error) => skipped.push({ file: path.relative(root, what), error }) : null);
+  return hits.map((full) => path.relative(walkRoot, full)).sort();
 }
 
 /**
@@ -349,6 +360,7 @@ export function planRename(parsed, { cwd = process.cwd(), env = process.env } = 
   // project 条目没有 /sites/ 前缀，要改的是 project.json 里的 id。
   let rewriteDir = null;
   let rewritePreview = [];
+  let rewriteSkipped = [];
   let projectJson = null;
   let articleMoves = [];
   let sitePrefixFiles = [];
@@ -360,7 +372,7 @@ export function planRename(parsed, { cwd = process.cwd(), env = process.env } = 
       throw new CliError(`project.json 的 id 是 "${meta.json.id}"，与登记的 ${before.id} 不一致；先让两边一致再改 id`);
     }
     projectJson = meta.file;
-    sitePrefixFiles = filesWithArticleSitePrefix(before.path, before.id);
+    sitePrefixFiles = filesWithArticleSitePrefix(before.path, before.id, rewriteSkipped);
     // ②' 文章桶 <旧 id>_<文章> → <新 id>_<文章>：目标有一个已存在就整单不动。
     const manifestIds = manifestPageIds();
     articleMoves = articleBucketIds(root, before.id, { manifestIds }).map((fromId) => {
@@ -385,10 +397,10 @@ export function planRename(parsed, { cwd = process.cwd(), env = process.env } = 
       throw new CliError(`条目 ${before.id} 的目录不存在：${before.path}；先 \`ppnt mv ${before.id} <真实路径>\` 再改 id`);
     }
     rewriteDir = before.path;
-    rewritePreview = rewriteSitePrefixUnder(rewriteDir, before.id, after.id, { dryRun: true });
+    rewritePreview = rewriteSitePrefixUnder(rewriteDir, before.id, after.id, { dryRun: true, skipped: rewriteSkipped });
   }
 
-  return { ...parsed, registryPath, dataRoot: root, before, after, bucketFrom, bucketTo, bucketExists, rewriteDir, rewritePreview, projectJson, articleMoves, sitePrefixFiles };
+  return { ...parsed, registryPath, dataRoot: root, before, after, bucketFrom, bucketTo, bucketExists, rewriteDir, rewritePreview, rewriteSkipped, projectJson, articleMoves, sitePrefixFiles };
 }
 
 /** --registry > PINPOINT_REGISTRY > 默认；相对路径按 cwd 解析。 */
@@ -573,8 +585,13 @@ export async function runPrune(argv, io = {}) {
     } else if (parsed.flags['dry-run']) {
       out(`桶 ${pageId} 不在任何页里，也没有账本；--dry-run：桶目录待删（ppnt prune ${pageId} 落盘）。`);
     } else {
-      fs.rmSync(bucket, { recursive: true, force: true });
-      out(`桶 ${pageId} 不在任何页里，也没有账本；桶目录删了：${bucket}`);
+      try {
+        fs.rmSync(bucket, { recursive: true, force: true });
+        out(`桶 ${pageId} 不在任何页里，也没有账本；桶目录删了：${bucket}`);
+      } catch (error) {
+        err(`桶目录 ${bucket} 没删掉：${error.message}；修好权限后重跑 ppnt prune ${pageId}`);
+        return 1;
+      }
     }
     return 0;
   }
@@ -584,18 +601,36 @@ export async function runPrune(argv, io = {}) {
     return 0;
   }
   let images = 0;
+  const failed = [];
+  // 逐项 catch：账本删了一半时（权限、readdir 与 stat 之间文件消失）留下来的如实报
+  // 出来退 1，不让 prune 在半截状态上抛栈（CLI 排查 #5）。
   for (const name of names) {
-    fs.rmSync(path.join(bucket, name), { force: true });
+    try {
+      fs.rmSync(path.join(bucket, name), { force: true });
+    } catch (error) {
+      failed.push(`${path.join(bucket, name)}：${error.message}`);
+      continue;
+    }
     // 该账本独有的图片：文件名前缀 = 账本 key（不含 .json）+ '-'。
     const prefix = `${name.replace(/\.json$/, '')}-`;
     const imagesDir = path.join(bucket, 'images');
     if (fs.existsSync(imagesDir)) {
-      for (const file of fs.readdirSync(imagesDir)) {
+      let fileNames;
+      try {
+        fileNames = fs.readdirSync(imagesDir);
+      } catch (error) {
+        failed.push(`${imagesDir}：${error.message}`);
+        continue;
+      }
+      for (const file of fileNames) {
         if (!file.startsWith(prefix)) continue;
         const fileAbs = path.join(imagesDir, file);
-        if (fs.statSync(fileAbs).isFile()) {
+        try {
+          if (!fs.statSync(fileAbs).isFile()) continue;
           fs.rmSync(fileAbs, { force: true });
           images += 1;
+        } catch (error) {
+          if (error.code !== 'ENOENT') failed.push(`${fileAbs}：${error.message}`);
         }
       }
     }
@@ -603,12 +638,45 @@ export async function runPrune(argv, io = {}) {
   // 页已不在：账本删完，桶里只剩 _seq.json、图片之类，整个桶目录一起删。桶目录在盘上就能写
   // （docs/annotation.md“孤儿”），留着空目录，迟到的保存会把行写回来；目录没了，服务不新建页已不在的桶。
   if (!known) {
-    fs.rmSync(bucket, { recursive: true, force: true });
+    if (!failed.length) {
+      try {
+        fs.rmSync(bucket, { recursive: true, force: true });
+      } catch (error) {
+        failed.push(`桶目录 ${bucket}：${error.message}`);
+      }
+    }
+    if (failed.length) {
+      err('prune 删了一部分，这些没删掉：');
+      for (const line of failed) err(`  ${line}`);
+      err('修好权限后重跑 ppnt prune 收尾。');
+      return 1;
+    }
     out(`已删除 ${names.length} 本孤儿账本，页已不在，桶目录也删了：${bucket}`);
     return 0;
   }
+  if (failed.length) {
+    err('prune 删了一部分，这些没删掉：');
+    for (const line of failed) err(`  ${line}`);
+    err('修好权限后重跑 ppnt prune 收尾。');
+    return 1;
+  }
   out(`已删除 ${names.length} 本孤儿账本${images ? ` 与 ${images} 个孤儿图片` : ''}。`);
   return 0;
+}
+
+/** 改写扫描有读不了的路径（walkTextFiles 的 onError 收集）：前缀可能没改全。去重打到
+    stderr，返回有没有。 */
+export function reportRewriteSkipped(skipped, err) {
+  if (!skipped || !skipped.length) return false;
+  const seen = new Set();
+  err(`注意 ${skipped.length} 个路径读不了，/sites/ 前缀可能没改全：`);
+  for (const row of skipped) {
+    if (seen.has(row.file)) continue;
+    seen.add(row.file);
+    err(`  ${row.file}（${(row.error && row.error.message) || row.error}）`);
+  }
+  err('修好权限后重跑一遍确认；source 之外的位置（kit、缓存）不受影响。');
+  return true;
 }
 
 /**
@@ -640,6 +708,8 @@ export async function renameEntry(parsed, io = {}) {
       for (const file of plan.rewritePreview) out(`    ${file}`);
     }
     out('--dry-run：什么都没写，去掉 --dry-run 再跑。');
+    // 预检没读全（权限）：计划不可信，报出来并退 1，不给「都会改到」的假象。
+    if (reportRewriteSkipped(plan.rewriteSkipped, err)) return 1;
     return 0;
   }
 
@@ -667,7 +737,7 @@ export async function renameEntry(parsed, io = {}) {
         recovery.writeFile(plan.projectJson, JSON.stringify({ ...json, id: plan.after.id }, null, 2) + '\n');
       });
     } else if (plan.rewriteDir) {
-      recovery.step('资源前缀', () => rewriteSitePrefixUnder(plan.rewriteDir, plan.before.id, plan.after.id, { writeFile: recovery.writeFile }));
+      recovery.step('资源前缀', () => rewriteSitePrefixUnder(plan.rewriteDir, plan.before.id, plan.after.id, { writeFile: recovery.writeFile, skipped: plan.rewriteSkipped }));
     }
     recovery.commit(err);
   } catch (error) {
@@ -747,6 +817,9 @@ export async function renameEntry(parsed, io = {}) {
   out(`registry：${plan.registryPath}`);
   // ④ 重载
   await reloadService({ env, requestFn, registryPath: plan.registryPath, out, err });
+  // 改写扫描有读不了的文件：id 已改、桶已搬，但 /sites/ 前缀可能没改全 —— 报出来退 1，
+  // 不给「三处都改到了」的假象（2026-09-03 那类事故怕的就是改漏第三处还不被发现）。
+  if (reportRewriteSkipped(plan.rewriteSkipped, err)) return 1;
   return 0;
 }
 
@@ -822,18 +895,34 @@ export async function runRemove(argv, io = {}) {
   out(`  源文件不动：${entryTargetDesc(removed)} 还在原地，重新 \`pinpoint add\` 即恢复登记。`);
   // 删桶时服务可能正好在往里写（一次保存的临时文件刚建出来）：rmSync 遇到 ENOTEMPTY
   // 重试几次，不让 CLI 在登记表已改之后抛栈退出。那次保存自己会回 503 bucket_gone。
+  // 权限类的失败不抛栈：登记已删（生效），桶没清的如实报出来退 1（CLI 排查 #5）。
   const rmBucket = { recursive: true, force: true, maxRetries: 3 };
+  const failed = [];
   if (plan.bucketExists) {
-    fs.rmSync(plan.bucket, rmBucket);
-    out(`  标注桶 ${plan.bucket} 里没有标注行，已顺手删掉。`);
+    try {
+      fs.rmSync(plan.bucket, rmBucket);
+      out(`  标注桶 ${plan.bucket} 里没有标注行，已顺手删掉。`);
+    } catch (error) {
+      failed.push(`标注桶 ${plan.bucket}：${error.message}`);
+    }
   } else if (plan.before.kind !== 'project') {
     out(`  标注桶 ${plan.bucket} 不存在，没有桶要清。`);
   }
   for (const item of plan.articleBuckets || []) {
-    fs.rmSync(item.dir, rmBucket);
-    out(`  文章桶 ${item.dir} 里没有标注行，已顺手删掉。`);
+    try {
+      fs.rmSync(item.dir, rmBucket);
+      out(`  文章桶 ${item.dir} 里没有标注行，已顺手删掉。`);
+    } catch (error) {
+      failed.push(`文章桶 ${item.dir}：${error.message}`);
+    }
   }
   out(`registry：${plan.registryPath}`);
   await reloadService({ env, requestFn, registryPath: plan.registryPath, out, err });
+  if (failed.length) {
+    err('登记条目已删除（已生效），但桶没清干净：');
+    for (const line of failed) err(`  ${line}`);
+    err('修好权限后手动删，或重跑 pinpoint remove。');
+    return 1;
+  }
   return 0;
 }
