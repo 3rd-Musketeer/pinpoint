@@ -206,6 +206,7 @@ test('视口偏好按页记在 prefs.viewportByPage 跨 reload 保持；手机�
 
   await page.reload();
   await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await page.waitForFunction(() => Boolean(document.querySelector('#wbroot')?.getAttribute('data-page-mode')));
   expect(await stageForm(page)).toBe('html');
   expect(await rootViewport(page)).toBe('phone');
   await expect(page.locator('#wbviewport [data-viewport="phone"]')).toHaveAttribute('aria-pressed', 'true');
