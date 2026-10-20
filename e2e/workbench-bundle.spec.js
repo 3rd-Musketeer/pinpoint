@@ -1,7 +1,7 @@
 import { expect, test } from './lib/fixtures.js';
 import { openWorkbenchConnected } from './lib/workbench.js';
 
-test('打包工作台：真实页面只取 hash 入口、保留失败通知与无缓存壳页', async ({ page, request }) => {
+test('打包工作台：真实页面只取 hash 入口、保留失败通知与无缓存壳页 @bundle-entry', async ({ page, request }) => {
   test.skip(process.env.PINPOINT_WORKBENCH_MODE !== 'bundle', '打包模式专用契约');
   const scripts = [];
   page.on('request', req => { if (req.resourceType() === 'script') scripts.push(new URL(req.url()).pathname); });
