@@ -168,12 +168,15 @@ export function conceptsLoader() {
               const parsed = await ctx.parseData({ id, data: { ...data, ...own, project: p.id, file: c.file }, filePath: c.file });
               const digest = ctx.generateDigest(contents);
               let rendered;
+              let renderError;
               try {
                 rendered = await render({ id, data, body, filePath: c.file, digest });
               } catch (e) {
                 ctx.logger.error(`render ${c.file}: ${e.message}`);
+                // 与文章的 loadError 同一个待遇：保留路由，页面把错误亮出来，不是静默没正文。
+                renderError = `${c.file}: ${e.message}`;
               }
-              entries.push({ id, data: parsed, body, filePath: posix(path.relative(root, c.file)), digest, rendered });
+              entries.push({ id, data: renderError ? { ...parsed, renderError } : parsed, body, filePath: posix(path.relative(root, c.file)), digest, rendered });
             } catch (error) {
               ctx.logger.error(`${c.file}: ${error.message}`);
             }

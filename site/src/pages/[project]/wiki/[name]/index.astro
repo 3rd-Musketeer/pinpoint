@@ -14,9 +14,11 @@ const site = await loadSite();
 const p = site.projects.get(projectId);
 const c = p.concepts.find((x) => x.slug === slug);
 const body = resolveRawRefs(c.entry.rendered?.html, site);
+// 正文 render 失败（loaders.js 记进 entry 数据）与 project 错误一样亮在页顶，不是静默没正文。
+const errors = [...p.errors, ...(c.entry.data.renderError ? [c.entry.data.renderError] : [])];
 ---
 <Base title={`${c.name} · ${p.title}`} description={c.definition} project={p.id}
-  crumbs={[{ label: p.title, href: projectHref(p.id) }, { label: 'wiki', href: wikiHref(p.id) }, { label: c.name }]} errors={p.errors} prose>
+  crumbs={[{ label: p.title, href: projectHref(p.id) }, { label: 'wiki', href: wikiHref(p.id) }, { label: c.name }]} errors={errors} prose>
   <div class="prose">
     <div class="label">wiki 词条<span class={`st-chip${c.fixed ? ' ok' : ''}`}>{c.status}</span></div>
     <h1>{c.name}</h1>

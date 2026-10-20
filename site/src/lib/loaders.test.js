@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import mdx from '@astrojs/mdx';
-import { articlesLoader, watchAll } from './loaders.js';
+import { articlesLoader, conceptsLoader, watchAll } from './loaders.js';
 
 // watchAll 是站点内容重读的唯一入口：登记表或 project 目录一变就重读。这里用假 watcher 和假“磁盘”
 // 摆出 2026-10-15 满载下的两种时序（docs/debugging.md 同日案例）：
@@ -166,4 +166,44 @@ test('watchAll：新 project 加进监听之前就写好的文章，加完之后
   assert.ok(h.watcher.added.includes(NEW_DIR), '新 project 目录要加进监听');
   assert.deepEqual(latest(h.runs).seen.projects.find((p) => p.id === 'new').articles, ['hello'],
     '加进监听之前写好的文章没有读到：站点会一直 404');
+});
+
+test('conceptsLoader：wiki 正文 render 失败保留路由并带 renderError，页面有得显示（r5 T5）', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-concepts-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const pin = path.join(dir, 'wt', 'docs', 'pinpoint');
+  fs.mkdirSync(path.join(pin, 'wiki'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'wt', 'docs', 'pinpoint', 'project.json'), JSON.stringify({ id: 'wt', title: 'WT' }));
+  fs.writeFileSync(path.join(pin, 'wiki', 'ok.md'), '好的词条。\n');
+  fs.writeFileSync(path.join(pin, 'wiki', 'broken.md'), '坏掉的词条。\n');
+  const prevRegistry = process.env.PINPOINT_REGISTRY;
+  process.env.PINPOINT_REGISTRY = path.join(dir, 'registry.json');
+  t.after(() => { if (prevRegistry === undefined) delete process.env.PINPOINT_REGISTRY; else process.env.PINPOINT_REGISTRY = prevRegistry; });
+  fs.writeFileSync(process.env.PINPOINT_REGISTRY, JSON.stringify({ version: 1, entries: [{ id: 'wt', kind: 'project', path: path.join(dir, 'wt') }] }));
+
+  const store = { entries: [], clear() { this.entries = []; }, set(e) { this.entries.push(e); } };
+  const errors = [];
+  const ctx = {
+    watcher: null,
+    config: { root: pathToFileURL(path.join(dir, 'site')) },
+    logger: { error: (message) => errors.push(message), warn: () => {} },
+    store,
+    parseData: async ({ data }) => data,
+    generateDigest: () => 'd0',
+    entryTypes: new Map([['.md', {
+      getEntryInfo: async ({ contents }) => ({ body: contents, data: {} }),
+      getRenderFunction: async () => async (entry) => {
+        if (entry.filePath.endsWith('broken.md')) throw new Error('render boom');
+        return { html: '<p>好的词条。</p>' };
+      },
+    }]]),
+  };
+  await conceptsLoader().load(ctx);
+  const bySlug = new Map(store.entries.map((e) => [e.id, e]));
+  assert.equal(bySlug.get('wt/ok').rendered.html, '<p>好的词条。</p>');
+  assert.equal(bySlug.get('wt/ok').data.renderError, undefined);
+  // 坏的保留路由（页面还在），错误进 entry 数据让页面亮出来，而不是静默没正文。
+  assert.equal(bySlug.get('wt/broken').rendered, undefined);
+  assert.match(bySlug.get('wt/broken').data.renderError, /broken\.md: render boom/);
+  assert.ok(errors.some((m) => m.includes('broken.md')), '服务端日志仍要有一行');
 });
