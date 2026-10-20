@@ -47,3 +47,15 @@ test('/api/projects returns listProjects output; /api/projects/<id> one project 
   assert.equal((await fetch(`${origin}/api/projects`, { method: 'POST' })).status, 405);
   assert.equal((await fetch(`${origin}/api/projectsx`)).status, 418, 'other paths fall through');
 });
+
+test('/api/projects/<坏百分号编码> 答 400，不落进 connect 的 500', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-projects-api-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'registry.json');
+  fs.writeFileSync(file, JSON.stringify({ version: 1, entries: [{ id: 'pinpoint', kind: 'dir', path: REPO }] }));
+  const registry = loadRegistry({ root: REPO, path: file, log: () => {} });
+  const origin = await serve(t, registry);
+  const res = await fetch(`${origin}/api/projects/%ff`);
+  assert.equal(res.status, 400);
+  assert.equal((await res.json()).error, 'bad_request');
+});

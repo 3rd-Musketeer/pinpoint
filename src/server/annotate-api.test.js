@@ -51,6 +51,24 @@ test('a route that throws answers 500 instead of rejecting (the service stays up
   assert.equal(errors.length, 1);
 });
 
+test('路径里的坏百分号编码答 400，不是 500（pp3 review 余项 14）', async (t) => {
+  const { handler } = withFixture(t);
+  const errors = [];
+  t.mock.method(console, 'error', (...args) => errors.push(args));
+  const cases = [
+    ['GET', '/annotations/%ff?entry=pinpoint', undefined],
+    ['GET', '/images/%ff?entry=pinpoint', undefined],
+    ['POST', '/annotations/%ff/12/status', { entry: 'pinpoint', status: 'check', baseRevision: 0 }],
+    ['POST', '/annotations/%ff/12/reply', { entry: 'pinpoint', text: '回', baseRevision: 0 }],
+  ];
+  for (const [method, url, body] of cases) {
+    const { res, json } = await call(handler, method, url, body);
+    assert.equal(res.statusCode, 400, `${method} ${url}`);
+    assert.equal(json.error, 'bad_request', `${method} ${url}`);
+  }
+  assert.deepEqual(errors, [], '坏编码是请求错，不该惊动服务端日志');
+});
+
 test('/save：桶在写入途中被删 → 503 bucket_gone，带说明，不是 500', async (t) => {
   const { dataRoot, registry } = withFixture(t);
   const handler = createAnnotateHandler({ dataRoot, registry });

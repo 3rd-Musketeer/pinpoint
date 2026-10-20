@@ -240,6 +240,17 @@ export function createAnnotateHandler(options = {}) {
     return target.entry;
   }
 
+  // 路径段解码（pp3 review 余项 14）：坏的百分号编码答 400 —— 这条 URL 不表达任何
+  // 一条合法路径，不接住就落进通用 500，把「请求错」伪装成「服务错」。
+  function decodeSegment(res, raw) {
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      sendJson(res, 400, { error: 'bad_request', message: '路径里有坏的百分号编码' });
+      return null;
+    }
+  }
+
   async function serveAnnotateClient(req, res, urlPath) {
     res.setHeader('Vary', 'Accept-Encoding');
     const prose = urlPath === '/prose.js' || PROSE_BUNDLE_URL_RE.test(urlPath);
@@ -389,8 +400,9 @@ export function createAnnotateHandler(options = {}) {
       run: ({ res, urlPath, query }) => {
         const entryId = entryOrReject(res, query.get('entry'));
         if (!entryId) return true;
-        const page = ledgerKey(decodeURIComponent(urlPath.slice('/annotations/'.length)));
-        sendJson(res, 200, storeFor(entryId).readDoc(page));
+        const rawPage = decodeSegment(res, urlPath.slice('/annotations/'.length));
+        if (rawPage === null) return true;
+        sendJson(res, 200, storeFor(entryId).readDoc(ledgerKey(rawPage)));
         return true;
       },
     },
@@ -400,7 +412,8 @@ export function createAnnotateHandler(options = {}) {
       run: ({ req, res, urlPath, query }) => {
         const entryId = entryOrReject(res, query.get('entry'));
         if (!entryId) return true;
-        const name = decodeURIComponent(urlPath.slice('/images/'.length));
+        const name = decodeSegment(res, urlPath.slice('/images/'.length));
+        if (name === null) return true;
         const file = storeFor(entryId).imagePath(name);
         if (fs.existsSync(file) && fs.statSync(file).isFile()) {
           // 标注图片走策略表 image 行（S3）：no-cache + mtime+size ETag，重开看板 304。
@@ -417,13 +430,15 @@ export function createAnnotateHandler(options = {}) {
       match: STATUS_ROUTE,
       run: async ({ req, res, urlPath }) => {
         const parts = urlPath.match(STATUS_ROUTE);
+        const page = decodeSegment(res, parts[1]);
+        const rawId = decodeSegment(res, parts[2]);
+        if (page === null || rawId === null) return true;
         const parsed = await readEntryBody(req, res, LEDGER_BODY_LIMIT);
         if (!parsed) return true;
         const { body, entryId } = parsed;
-        const rawId = decodeURIComponent(parts[2]);
         const numeric = /^[1-9][0-9]*$/.test(rawId) ? Number(rawId) : rawId;
         const result = storeFor(entryId).setStatus({
-          page: decodeURIComponent(parts[1]),
+          page,
           id: numeric,
           status: body.status,
           baseRevision: body.baseRevision,
@@ -443,12 +458,14 @@ export function createAnnotateHandler(options = {}) {
       match: REPLY_ROUTE,
       run: async ({ req, res, urlPath }) => {
         const parts = urlPath.match(REPLY_ROUTE);
+        const page = decodeSegment(res, parts[1]);
+        const rawId = decodeSegment(res, parts[2]);
+        if (page === null || rawId === null) return true;
         const parsed = await readEntryBody(req, res, LEDGER_BODY_LIMIT);
         if (!parsed) return true;
         const { body, entryId } = parsed;
-        const rawId = decodeURIComponent(parts[2]);
         const result = storeFor(entryId).appendMessage({
-          page: decodeURIComponent(parts[1]),
+          page,
           id: /^[1-9][0-9]*$/.test(rawId) ? Number(rawId) : rawId,
           text: body.text,
           baseRevision: body.baseRevision,

@@ -44,7 +44,15 @@ export function createProjectsHandler({ registry }) {
       sendFreshJson(res, 200, articleCanvas(projectId, articleId, { registry }));
       return;
     }
-    const id = decodeURIComponent(urlPath.slice('/api/projects/'.length).replace(/\/$/, ''));
+    let id;
+    try {
+      id = decodeURIComponent(urlPath.slice('/api/projects/'.length).replace(/\/$/, ''));
+    } catch {
+      // 坏的百分号编码不表达任何一条合法路径：400，不落进 connect 的 500
+      //（pp3 review 余项 14，与上面 canvas 路由同一写法）。
+      sendFreshJson(res, 400, { error: 'bad_request', message: 'bad request' });
+      return;
+    }
     const project = findProject(registry, id);
     if (!project) {
       sendFreshJson(res, 404, { error: 'not_found', message: `project 没登记：${id}` });
