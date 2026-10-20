@@ -313,6 +313,27 @@ const REQUIRE_MAP = {
  * GC 回收；此前的 data: URL import 每编一屏往 Node 的 ESM 缓存塞一个永不回收的
  * 模块，--watch 与 dev server 长跑会无限增长。
  */
+// <script> / <style> 是 raw text 元素：body 里的实体浏览器不解码，字符串子节点
+// 被 renderToString 转义后就是静默 SyntaxError（R4 B5 发现：内联脚本挂掉零信号）。
+// 渲染后把这两类元素的 body 解回原文；普通元素的转义不动（HTML 语义照旧）。
+const ENTITY_DECODE = { '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&#039;': "'", '&amp;': '&' };
+
+function unescapeRawTextElements(html) {
+  return html.replace(/<(script|style)\b[^>]*>([\s\S]*?)<\/\1>/gi, (whole, tag, body) => {
+    const decoded = decodeEntities(body);
+    return decoded === body ? whole : whole.replace(body, () => decoded);
+  });
+}
+
+function decodeEntities(text) {
+  return String(text).replace(/&(?:lt|gt|quot|#39|#039|amp);/g, (entity) => ENTITY_DECODE[entity]);
+}
+
+/** renderToString + pp-id 重编号 + raw text 还原：三处 JSX 帧渲染（帧 / comp / 图）共用。 */
+function renderFrameHtml(vnode, pageDir) {
+  return unescapeRawTextElements(renumberPpIds(renderToString(vnode), { pageDir }));
+}
+
 function evaluateFrameBundle(code) {
   const mod = { exports: {} };
   const require = (id) => {
@@ -417,7 +438,7 @@ async function compileJsxScreen(target, screenId, file) {
     }
     return {
       ok: true,
-      html: renumberPpIds(renderToString(h(__ppWrapComponent(mod.default), {})), { pageDir: target.pageDir }),
+      html: renderFrameHtml(h(__ppWrapComponent(mod.default), {}), target.pageDir),
       deps: depRecordsFromInputs(target, built.metafile.inputs, [file]),
     };
   } catch (error) {
@@ -610,7 +631,7 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
         source: null,
       };
     }
-    const html = renumberPpIds(renderToString(h(__ppWrapComponent(mod.default), {})), { pageDir: target.pageDir });
+    const html = renderFrameHtml(h(__ppWrapComponent(mod.default), {}), target.pageDir);
     const sourceRel = path.relative(target.pageDir, sourceAbs).split(path.sep).join('/');
     const deps = depRecordsFromInputs(target, built.metafile.inputs, ['__comp__.jsx', sourceRel]);
     return {
@@ -920,7 +941,7 @@ export async function compileFigure(target, id) {
       const message = '图文件必须默认导出一个返回 JSX 的函数';
       return finish({ ok: false, error: `${files.jsx}: ${message}`, diagnostics: one('figure_export', abs(files.jsx), message), sources, usesKit });
     }
-    html = renumberPpIds(renderToString(h(__ppWrapComponent(mod.default), {})), { pageDir: target.pageDir });
+    html = renderFrameHtml(h(__ppWrapComponent(mod.default), {}), target.pageDir);
   } catch (error) {
     const message = String((error && error.message) || error);
     return finish({ ok: false, error: `${files.jsx}: ${message}`, diagnostics: one('figure_render', abs(files.jsx), message), sources, usesKit });

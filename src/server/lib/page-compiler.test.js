@@ -875,3 +875,36 @@ describe('skipFresh：启动全量只编 dist 过期的页', () => {
     assert.deepEqual(rows.map((row) => row.skipped === true), [false], '失败屏（源码在）重编');
   });
 });
+
+test('script / style 的字符串子节点不做实体转义（R4 B5 发现）：raw text 元素里是可执行的原文', async () => {
+  const target = makePage('raw-text-elements', {
+    board: BASIC_BOARD,
+    files: {
+      'home.jsx': [
+        'export default function Home() {',
+        '  const cond = false;',
+        '  return (',
+        '    <div className="ios-app">',
+        '      <script>{`if (a < b && cond !== "x") { root.dataset.ok = "1"; }`}</script>',
+        '      <style>{`.p > .c::before { content: "<&>"; }`}</style>',
+        '      <p>{`1 < 2 & 3 > 2`}</p>',
+        '    </div>',
+        '  );',
+        '}',
+        '',
+      ].join('\n'),
+    },
+  });
+  const distRoot = path.join(tmp, 'dist');
+  const result = await compilePage(target, { distRoot });
+  assert.equal(result.ok, true, JSON.stringify(result.screens));
+  const html = fs.readFileSync(distFile(target, 'home.html'), 'utf8');
+  const script = html.match(/<script\b[^>]*>([\s\S]*?)<\/script>/)?.[1] ?? '';
+  const style = html.match(/<style\b[^>]*>([\s\S]*?)<\/style>/)?.[1] ?? '';
+  assert.ok(script.includes('a < b && cond'), `script 里应是原文可执行形式，实际：${script}`);
+  assert.ok(!script.includes('&lt;') && !script.includes('&amp;'), `script 不该有实体，实际：${script}`);
+  assert.ok(style.includes('.p > .c') && style.includes('"<&>"'), `style 里应是原文，实际：${style}`);
+  // 普通元素的文本照旧转义（HTML 语义不变）。
+  assert.match(html, /<p[^>]*>1 &lt; 2 &amp; 3 > 2<\/p>/);
+});
+
