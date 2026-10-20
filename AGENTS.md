@@ -89,7 +89,7 @@ agent 只经 `ppnt mark <目标> <引用…> check|done [--note "<回复>"]` 写
   所以在 clone 里改代码不会热更新到 owner 正在用的页面，也不能拿 `pinpoint.localhost` 验证刚改的代码。
   - 试改动：clone 里 `just staging` 起 `http://127.0.0.1:4900`（`~/.pinpoint` 的新快照，标注只进快照，前台运行）；
     feat worktree 里照旧 `just preview`。
-  - 上线 = `just promote [<rev>]`（默认 `main`）：先在临时源码快照里准备依赖并构建工作台，成功后发布 worktree 才移到该提交，安装产物再 restart；构建失败保留旧服务，
+  - 上线 = `just promote [<rev>]`（默认 `main`）：先在临时源码快照里准备依赖并构建工作台，成功后停旧、移动发布 worktree、安装产物，起新并确认健康；切换失败恢复磁盘并重新起旧、确认健康，恢复也失败则保留材料并打印 recovery.sh 命令；构建失败保留旧服务，
     记一行 `~/.pinpoint/logs/releases.log`，打出回滚命令。发布 worktree 只靠 promote 移动，不在里面改文件、不切到分支
     （在分支上 portless 会把它挂到 `<分支>.pinpoint.localhost`）。
   - 正式服务与 staging 的工作台使用预构建 JS/CSS，预览帧的编译与 HMR 不变。开发用 `PINPOINT_WORKBENCH_MODE=dev`，

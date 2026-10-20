@@ -17,11 +17,13 @@ function fixture(t, { buildFails = false, installFails = false, changedLock = fa
   fs.writeFileSync(path.join(dist, 'enabled'), '');
   fs.writeFileSync(path.join(dist, 'assets/old-hash.js'), 'old');
   const calls = [];
+  let current = 'old-sha';
   let prepared;
   function run(cmd, args, options) {
     calls.push({ cmd, args, cwd: options.cwd });
     if (cmd === 'git') {
       if (args[0] === 'checkout' && args.at(-1) === 'old-sha' && rollbackFails) throw new Error('rollback failed');
+      if (args[0] === 'checkout') current = args.at(-1);
       if (args.includes('--git-common-dir')) return path.join(root, '.git');
       if (args[0] === 'status' || args[0] === 'branch') return '';
       if (args.includes('--verify')) return 'new-sha';
@@ -47,7 +49,7 @@ function fixture(t, { buildFails = false, installFails = false, changedLock = fa
         fs.writeFileSync(path.join(built, 'assets/new-hash.js'), 'new');
       }
     }
-    if (cmd === process.execPath && restartFails) throw new Error('restart failed');
+    if (cmd === process.execPath && args[1] === 'start' && current === 'new-sha' && restartFails) throw new Error('restart failed');
     return '';
   }
   return { root, rel, dist, calls, args: { root, release: rel, home: path.join(root, 'home'), run, log() {} } };
@@ -57,7 +59,7 @@ test('promote：构建/安装失败或伪成功无产物，不移动 release，�
   for (const failure of [{ buildFails: true }, { installFails: true, changedLock: true }, { incomplete: true }]) {
     const f = fixture(t, failure);
     assert.throws(() => promote(f.args));
-    assert.equal(f.calls.some(c => c.args[0] === 'checkout' || c.args.includes('restart')), false);
+    assert.equal(f.calls.some(c => c.args[0] === 'checkout' || c.cmd === process.execPath), false);
     assert.equal(fs.readFileSync(path.join(f.dist, 'index.html'), 'utf8'), 'old-shell');
     assert.equal(fs.existsSync(path.join(f.root, 'home/.pinpoint/logs/releases.log')), false);
     assert.deepEqual(fs.readdirSync(path.join(f.root, '.tmp')), []);
@@ -69,8 +71,10 @@ test('promote：先构建后切换，复用依赖、保留旧 hash，成功后�
   assert.deepEqual(promote(f.args), { prev: 'old-sha', target: 'new-sha' });
   const build = f.calls.findIndex(c => c.cmd === 'npm');
   const checkout = f.calls.findIndex(c => c.args[0] === 'checkout');
-  const restart = f.calls.findIndex(c => c.args.includes('restart'));
-  assert.ok(build < checkout && checkout < restart);
+  const stop = f.calls.findIndex(c => c.args[1] === 'stop');
+  const start = f.calls.findIndex(c => c.args[1] === 'start');
+  const healthy = f.calls.findIndex(c => c.args[1] === 'status');
+  assert.ok(build < stop && stop < checkout && checkout < start && start < healthy);
   assert.equal(fs.readFileSync(path.join(f.dist, 'index.html'), 'utf8'), 'new-shell');
   assert.equal(fs.readFileSync(path.join(f.dist, 'assets/old-hash.js'), 'utf8'), 'old');
   assert.match(fs.readFileSync(path.join(f.root, 'home/.pinpoint/logs/releases.log'), 'utf8'), /old-sha -> new-sha/);
@@ -95,7 +99,7 @@ test('promote：可回滚到打包机制引入之前，停用 bundle 标记', t 
 
 test('promote：磁盘回滚也失败时，报出恢复路径并保留旧依赖副本', t => {
   const f = fixture(t, { changedLock: true, restartFails: true, rollbackFails: true });
-  assert.throws(() => promote(f.args), /restart failed.*磁盘回滚失败.*恢复材料保留在/);
+  assert.throws(() => promote(f.args), /restart failed.*旧服务恢复失败.*恢复材料保留在.*recovery\.sh/);
   const [kept] = fs.readdirSync(path.join(f.root, '.tmp'));
   assert.ok(kept);
   assert.equal(fs.statSync(path.join(f.root, '.tmp', kept, 'previous-node_modules')).isDirectory(), true);

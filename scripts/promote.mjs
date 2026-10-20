@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // 所有外部命令经过同一口；测试用隔离磁盘与假命令确认构建失败不 checkout / restart。
-export function promote({ root = ROOT, rev = 'main', release, home = os.homedir(), run = execFileSync, log = console.log } = {}) {
+export function promote({ root = ROOT, rev = 'main', release, home = os.homedir(), run = execFileSync, log = console.log, warn = console.error } = {}) {
   const git = (args, cwd = root) => String(run('git', args, { cwd, encoding: 'utf8' })).trim();
   const main = path.dirname(git(['rev-parse', '--path-format=absolute', '--git-common-dir']));
   const rel = release || process.env.PINPOINT_RELEASE_DIR || path.join(main.replace('/repos/', '/repos/.worktrees/'), 'release');
@@ -19,12 +19,30 @@ export function promote({ root = ROOT, rev = 'main', release, home = os.homedir(
   fs.mkdirSync(path.join(root, '.tmp'), { recursive: true });
   const prepared = fs.mkdtempSync(path.join(root, '.tmp/promote-'));
   let moved = false;
+  let serviceTouched = false;
   let depsMoved = false;
   let preservePrepared = false;
   const previousDeps = path.join(prepared, 'previous-node_modules');
   const dist = path.join(rel, '.tmp/workbench-dist');
   const priorShell = fs.existsSync(path.join(dist, 'index.html')) ? fs.readFileSync(path.join(dist, 'index.html')) : null;
   const priorEnabled = fs.existsSync(path.join(dist, 'enabled'));
+  const cli = path.join(rel, 'bin/pinpoint.mjs');
+  const oldEnv = { ...process.env, PINPOINT_WORKBENCH_MODE: priorEnabled ? 'bundle' : 'dev', PINPOINT_WORKBENCH_DIST: dist };
+  const service = (action, env) => run(process.execPath, [cli, action], { cwd: rel, stdio: 'inherit', env });
+  const quote = value => `'${String(value).replace(/'/g, `'"'"'`)}'`;
+  // 恢复材料必须落盘，不能只存在本进程的 Buffer 里。
+  if (priorShell) fs.writeFileSync(path.join(prepared, 'previous-index.html'), priorShell);
+  const recovery = path.join(prepared, 'recovery.sh');
+  fs.writeFileSync(recovery, [
+    '#!/bin/sh', 'set -eu', `cd ${quote(rel)}`, `node ${quote(cli)} stop`,
+    `git checkout -q --detach ${quote(prev)}`, `mkdir -p ${quote(dist)}`,
+    priorShell ? `cp ${quote(path.join(prepared, 'previous-index.html'))} ${quote(path.join(dist, 'index.html'))}` : `rm -f ${quote(path.join(dist, 'index.html'))}`,
+    priorEnabled ? `touch ${quote(path.join(dist, 'enabled'))}` : `rm -f ${quote(path.join(dist, 'enabled'))}`,
+    `if [ -e ${quote(previousDeps)} ]; then rm -rf ${quote(path.join(rel, 'node_modules'))}; mv ${quote(previousDeps)} ${quote(path.join(rel, 'node_modules'))}; fi`,
+    `export PINPOINT_WORKBENCH_MODE=${quote(oldEnv.PINPOINT_WORKBENCH_MODE)} PINPOINT_WORKBENCH_DIST=${quote(dist)}`,
+    `node ${quote(cli)} start`, `node ${quote(cli)} status`, '',
+  ].join('\n'), { mode: 0o700 });
+  fs.writeFileSync(path.join(prepared, 'recovery.json'), JSON.stringify({ rel, prev, target, priorEnabled, priorShell: Boolean(priorShell) }, null, 2));
   try {
     // 不先 checkout 活服务的目录：Vite 正在监听它，失败后再 checkout 回去已经太晚。
     const archive = path.join(prepared, 'source.tar');
@@ -46,6 +64,9 @@ export function promote({ root = ROOT, rev = 'main', release, home = os.homedir(
         throw new Error('工作台构建没有生成完整产物');
       }
     }
+    // 构建成功后才停旧；从第一次 stop 起，任何失败都必须恢复运行中的旧服务。
+    serviceTouched = true;
+    service('stop', oldEnv);
     git(['checkout', '-q', '--detach', target], rel);
     moved = true;
     if (install) {
@@ -64,17 +85,16 @@ export function promote({ root = ROOT, rev = 'main', release, home = os.homedir(
       // 允许回滚到引入打包机制之前的提交。
       fs.rmSync(path.join(dist, 'enabled'), { force: true });
     }
-    run(process.execPath, [path.join(rel, 'bin/pinpoint.mjs'), 'restart'], { cwd: rel, stdio: 'inherit',
-      env: { ...process.env, PINPOINT_WORKBENCH_MODE: bundled ? 'bundle' : 'dev', PINPOINT_WORKBENCH_DIST: dist } });
-    fs.mkdirSync(path.join(home, '.pinpoint/logs'), { recursive: true });
-    fs.appendFileSync(path.join(home, '.pinpoint/logs/releases.log'), `${new Date().toISOString()} ${prev} -> ${target}\n`);
-    log(`promote: ${prev.slice(0, 7)} -> ${target.slice(0, 7)}; rollback: just promote ${prev.slice(0, 7)}`);
-    return { prev, target };
+    const newEnv = { ...oldEnv, PINPOINT_WORKBENCH_MODE: bundled ? 'bundle' : 'dev' };
+    service('start', newEnv);
+    service('status', newEnv);
   } catch (error) {
-    if (moved) {
-      // 重启失败时恢复磁盘提交和依赖，明确保留原错误；不声称服务已自动恢复健康。
+    if (serviceTouched) {
       try {
-        git(['checkout', '-q', '--detach', prev], rel);
+        // start 可能已经起了进程再返回失败；先停它，才允许恢复磁盘。
+        service('stop', oldEnv);
+        if (moved) git(['checkout', '-q', '--detach', prev], rel);
+        fs.mkdirSync(dist, { recursive: true });
         if (priorShell) fs.writeFileSync(path.join(dist, 'index.html'), priorShell);
         else fs.rmSync(path.join(dist, 'index.html'), { force: true });
         if (priorEnabled) fs.writeFileSync(path.join(dist, 'enabled'), '');
@@ -83,16 +103,27 @@ export function promote({ root = ROOT, rev = 'main', release, home = os.homedir(
           fs.rmSync(path.join(rel, 'node_modules'), { recursive: true, force: true });
           if (fs.existsSync(previousDeps)) fs.renameSync(previousDeps, path.join(rel, 'node_modules'));
         }
+        service('start', oldEnv);
+        service('status', oldEnv);
       } catch (rollbackError) {
         // 不清掉尚未恢复的旧依赖副本，给 owner 留恢复材料。
         preservePrepared = true;
-        throw new AggregateError([error, rollbackError], `${error.message}；磁盘回滚失败：${rollbackError.message}；恢复材料保留在 ${prepared}`);
+        // 恢复启动也可能留下不健康的旧进程；尽力停止，恢复脚本还会再次检查 stop。
+        try { service('stop', oldEnv); } catch { /* 不掩盖恢复失败，材料与命令保留 */ }
+        throw new AggregateError([error, rollbackError], `${error.message}；旧服务恢复失败：${rollbackError.message}；恢复材料保留在 ${prepared}；恢复命令：sh ${quote(recovery)}`);
       }
     }
     throw error;
   } finally {
     if (!preservePrepared) fs.rmSync(prepared, { recursive: true, force: true });
   }
+  // 此时新服务已验证健康。日志是发布记录，写失败只报警，不能回滚运行中服务。
+  try {
+    fs.mkdirSync(path.join(home, '.pinpoint/logs'), { recursive: true });
+    fs.appendFileSync(path.join(home, '.pinpoint/logs/releases.log'), `${new Date().toISOString()} ${prev} -> ${target}\n`);
+  } catch (error) { warn(`promote: 新服务已健康，发布日志写入失败：${error.message}；当前 ${target}，回滚命令：just promote ${prev}`); }
+  log(`promote: ${prev.slice(0, 7)} -> ${target.slice(0, 7)}; rollback: just promote ${prev.slice(0, 7)}`);
+  return { prev, target };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
