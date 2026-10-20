@@ -10,7 +10,9 @@ import { openProseArticle } from './lib/article.js';
 
 const ARTICLE = '/e2e-project/commit-confirm/';
 
-const openArticle = (page) => openProseArticle(page, ARTICLE, '提交前确认');
+// 同组前一条 spec（sidebar-content）会改登记：站点重读的整页重载可能落在本条的开页上
+//（全量首跑两次实证：popover 被重载拆掉，boundingBox 拿到 null）。开页 force 真等落定。
+const openArticle = (page) => openProseArticle(page, ARTICLE, '提交前确认', { force: true });
 
 const entry = (page) => page.locator('[data-toc-entry]');
 const pop = (page) => page.locator('[data-toc-nav]');
