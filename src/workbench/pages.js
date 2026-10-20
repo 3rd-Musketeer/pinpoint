@@ -39,7 +39,7 @@ import {
 } from './lib/page-url.js';
 import { closestBoardSection } from './lib/board-navigation.js';
 import { boardTabList, resolveTabId, tabIdOfScreen, tabIdOfSection } from './lib/board-tabs.js';
-import { entryBoardMode, validatePageManifest } from './lib/preview-contracts.js';
+import { mergeSitePages, registryToPages, validatePageManifest } from './lib/preview-contracts.js';
 import { currentBoardNavigationModel, updateSectionNavigatorActive } from './board-nav.js';
 import {
   refit,
@@ -624,50 +624,10 @@ function registrySitePages() {
         .then(registryToPages);
     }
   }).catch(function () {
-    return { pages: [], articles: [] };
+    // 兜底形状必须带 pageTimes：mergeSitePages 要在上面做合并（r5b B2，缺了
+    // 会把 registry 失败放大成整个清单 reject、「previews-only 降级」成空话）。
+    return { pages: [], articles: [], pageTimes: {} };
   });
-}
-
-/** GET /registry → Pages 消费的形状。纯变换，无副作用。 */
-function registryToPages(data) {
-  var entries = (data && data.entries) || [];
-  var pages = [];
-  entries.forEach(function (entry) {
-    if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file') || entry.id === 'pinpoint') return;
-    pages.push({
-      id: entry.id,
-      title: entry.title || entry.id,
-      // 2026-08-16 阶段 2：dir 条目默认 doc 壳（文档阅读器）；
-      // 只有显式 board:'ios' 上机壳，残留 'web'/缺省/未知一律落 html。
-      // file 条目（阶段 3）恒 doc 壳：单个完整 HTML 文档只有阅读器语义。
-      mode: entryBoardMode(entry),
-      // registry kind 透传到 manifest 页（dir / file；文章页是 article）。
-      kind: entry.kind,
-      addedAt: entry.addedAt || null,
-      annotatedAt: entry.annotatedAt || null,
-      // 2026-08-17g：内容 mtime（ms epoch，server 侧 content-mtime 算出；
-      // 缺字段 → null，排序沉底、行内不显示时间）。
-      mtime: typeof entry.mtime === 'number' ? entry.mtime : null,
-      site: true
-    });
-  });
-  // pp3：文章画布页（<project>_<article>）。它们属于文章，不进左栏 Pages；
-  // 清单另放一份 manifest.articles，pageEntry 认得它，`?page=<id>` 才能打开。
-  var articles = ((data && data.articles) || []).filter(function (row) {
-    return row && typeof row.id === 'string';
-  }).map(function (row) {
-    return {
-      id: row.id,
-      title: row.title || row.id,
-      mode: 'ios',
-      kind: 'article',
-      project: row.project || null,
-      article: row.article || null,
-      url: row.url || null,
-      site: true
-    };
-  });
-  return { pages: pages, articles: articles, pageTimes: data.pageTimes || {} };
 }
 
 export function loadPageManifest() {
@@ -685,17 +645,7 @@ export function loadPageManifest() {
     .then(function (raw) {
       var manifest = validatePageManifest(raw);
       return registrySitePages().then(function (sitePages) {
-        var known = {};
-        manifest.pages.forEach(function (page) { known[page.id] = true; });
-        sitePages.pages.forEach(function (page) {
-          if (known[page.id]) return; // a previews page with the same id wins
-          manifest.pages.push(page);
-        });
-        manifest.pages = manifest.pages.map(page => ({ ...page, ...sitePages.pageTimes[page.id] }));
-        manifest.pageTimes = sitePages.pageTimes;
-        // 同 id 的模板页 / 登记页优先（服务端已把撞名记成 project 错误）。
-        manifest.articles = (sitePages.articles || []).filter(function (page) { return !known[page.id]; });
-        wbSet({ pageManifest: manifest });
+        wbSet({ pageManifest: mergeSitePages(manifest, sitePages) });
         return manifest;
       });
     });

@@ -5,6 +5,8 @@ import test from 'node:test';
 import {
   ContractError,
   findRetiredVariantGroup,
+  mergeSitePages,
+  registryToPages,
   validateBoard,
   validatePageManifest,
   validateScreenFragment,
@@ -293,4 +295,56 @@ test('validateBoard：文章画布的派生 board（带 article）留下 article
   const sections = [{ id: 'pages', title: '页面', layout: 'row', screens: [{ id: 'long', shell: 'doc' }] }];
   assert.equal(validateBoard({ article: { project: 'p', id: 'a', url: '/p/a/' }, sections }).article, true);
   assert.equal(Object.hasOwn(validateBoard({ sections }), 'article'), false);
+});
+
+// r5b B2：/registry 失败时 registrySitePages 的兜底形状（没有 pageTimes）不能把
+// 整份清单合并炸掉 —— 那会把「registry 暂时读不到」放大成工作台整体死板，
+// 「previews-only 降级」成空话。放回旧的行内合并（sitePages.pageTimes[page.id]
+// 直接取属性）这条输入就是 TypeError。
+test('mergeSitePages：registry 兜底形状（缺 pageTimes / 缺 articles）合并不炸，previews 页原样保留', () => {
+  const manifest = validatePageManifest({ defaultPage: 'p1', pages: [{ id: 'p1', title: '模板页' }] });
+  const merged = mergeSitePages(manifest, { pages: [], articles: [] });
+  assert.deepEqual(merged.pages.map((p) => p.id), ['p1']);
+  assert.deepEqual(merged.pageTimes, {});
+  assert.deepEqual(merged.articles, []);
+  // 完全不给 sitePages（undefined 字段全缺）也一样。
+  const merged2 = mergeSitePages(validatePageManifest({ defaultPage: 'p2', pages: [{ id: 'p2', title: 'P2' }] }), undefined);
+  assert.deepEqual(merged2.pages.map((p) => p.id), ['p2']);
+});
+
+test('mergeSitePages：registry 条目并入、pageTimes 灌进行、同 id previews 优先、articles 滤掉撞名', () => {
+  const manifest = validatePageManifest({ defaultPage: 'p1', pages: [{ id: 'p1', title: '模板页' }] });
+  const merged = mergeSitePages(manifest, {
+    pages: [
+      { id: 'p1', title: '撞名的登记页', kind: 'dir', site: true },
+      { id: 'reg-dir', title: '登记页', kind: 'dir', site: true },
+    ],
+    articles: [
+      { id: 'proj_a', title: '文章', kind: 'article', site: true },
+      { id: 'p1', title: '撞名文章', kind: 'article', site: true },
+    ],
+    pageTimes: { 'reg-dir': { mtime: 1234, addedAt: 9 } },
+  });
+  assert.deepEqual(merged.pages.map((p) => p.id), ['p1', 'reg-dir']);
+  assert.equal(merged.pages[0].title, '模板页'); // previews page with the same id wins
+  assert.equal(merged.pages[1].mtime, 1234);
+  assert.equal(merged.pages[1].addedAt, 9);
+  assert.deepEqual(merged.articles.map((p) => p.id), ['proj_a']);
+});
+
+test('registryToPages：dir/file 收进 pages，pinpoint 自身与陌生 kind 不收，缺 pageTimes 兜 {}', () => {
+  const out = registryToPages({
+    entries: [
+      { id: 'pinpoint', kind: 'dir' },
+      { id: 'reg', kind: 'dir', title: '登记', mtime: 5 },
+      { id: 'file1', kind: 'file' },
+      { id: 'weird', kind: 'project' },
+      null,
+    ],
+    articles: [{ id: 'proj_a' }, { title: '没有 id 的不算' }, null],
+  });
+  assert.deepEqual(out.pages.map((p) => p.id), ['reg', 'file1']);
+  assert.deepEqual(out.articles.map((p) => p.id), ['proj_a']);
+  assert.deepEqual(out.pageTimes, {});
+  assert.deepEqual(registryToPages(null).pageTimes, {});
 });

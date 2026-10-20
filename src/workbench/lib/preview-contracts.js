@@ -82,6 +82,70 @@ function validatePageMode(value, path) {
   return mode;
 }
 
+/* ---- 页面清单装配（pages.js loadPageManifest 的纯变换部分）------------------
+   GET /registry → Pages 形状，再并进 previews 清单。放这里与 validatePageManifest
+   同住：都是「清单长什么样」的唯一真相，node --test 直测（pages.js 摸 DOM）。 */
+
+/** GET /registry → Pages 消费的形状。纯变换，无副作用。 */
+export function registryToPages(data) {
+  const entries = (data && data.entries) || [];
+  const pages = [];
+  entries.forEach(function (entry) {
+    if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file') || entry.id === 'pinpoint') return;
+    pages.push({
+      id: entry.id,
+      title: entry.title || entry.id,
+      // 2026-08-16 阶段 2：dir 条目默认 doc 壳（文档阅读器）；
+      // 只有显式 board:'ios' 上机壳，残留 'web'/缺省/未知一律落 html。
+      // file 条目（阶段 3）恒 doc 壳：单个完整 HTML 文档只有阅读器语义。
+      mode: entryBoardMode(entry),
+      // registry kind 透传到 manifest 页（dir / file；文章页是 article）。
+      kind: entry.kind,
+      addedAt: entry.addedAt || null,
+      annotatedAt: entry.annotatedAt || null,
+      // 2026-08-17g：内容 mtime（ms epoch，server 侧 content-mtime 算出；
+      // 缺字段 → null，排序沉底、行内不显示时间）。
+      mtime: typeof entry.mtime === 'number' ? entry.mtime : null,
+      site: true
+    });
+  });
+  // pp3：文章画布页（<project>_<article>）。它们属于文章，不进左栏 Pages；
+  // 清单另放一份 manifest.articles，pageEntry 认得它，`?page=<id>` 才能打开。
+  const articles = ((data && data.articles) || []).filter(function (row) {
+    return row && typeof row.id === 'string';
+  }).map(function (row) {
+    return {
+      id: row.id,
+      title: row.title || row.id,
+      mode: 'ios',
+      kind: 'article',
+      project: row.project || null,
+      article: row.article || null,
+      url: row.url || null,
+      site: true
+    };
+  });
+  return { pages: pages, articles: articles, pageTimes: (data && data.pageTimes) || {} };
+}
+
+/** previews 清单并上 registry 条目（原对象就地改，与旧 loadPageManifest 一致）。
+    sitePages 缺 pageTimes（死 API 的兜底形状）不能炸掉整个清单 —— 那会把
+    「registry 暂时读不到」放大成「工作台整体死板」（r5b B2，previews-only 降级）。 */
+export function mergeSitePages(manifest, sitePages) {
+  const pageTimes = (sitePages && sitePages.pageTimes) || {};
+  const known = {};
+  manifest.pages.forEach(function (page) { known[page.id] = true; });
+  ((sitePages && sitePages.pages) || []).forEach(function (page) {
+    if (known[page.id]) return; // a previews page with the same id wins
+    manifest.pages.push(page);
+  });
+  manifest.pages = manifest.pages.map(page => ({ ...page, ...pageTimes[page.id] }));
+  manifest.pageTimes = pageTimes;
+  // 同 id 的模板页 / 登记页优先（服务端已把撞名记成 project 错误）。
+  manifest.articles = ((sitePages && sitePages.articles) || []).filter(function (page) { return !known[page.id]; });
+  return manifest;
+}
+
 export function validatePageManifest(raw) {
   const input = objectAt(raw, 'manifest');
   // pp2 切片 3：模板页退役后 pages 可以为空（清单只剩 registry 条目经
