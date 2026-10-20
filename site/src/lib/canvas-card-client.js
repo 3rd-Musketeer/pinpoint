@@ -263,10 +263,11 @@ function fallbackFrame(host, box, { srcdoc = null, src = null, title = '' }) {
 }
 
 // 回退帧的尺寸直接量：load（子资源齐）→ 帧文档字体就绪 → frame-boot 跑完（有预览脚本时）
-// → rAF 后量一次。frame-boot 的完成标记在它自己的 Promise.all 之后，脚本被改坏或提前 return
-// 时标记永远不来；等它给上限，超时按当时的尺寸量（旧实现是 load 后 0 / 300 / 1200 ms 各量一次，
-// 不依赖这个标记）。
+// → rAF 后量。量不出（stage 还没内容）就再量；量到了也照量 —— 带裸脚本的帧在 load 后才
+// 注入内容（r5 B5，固件帧 slowinject/late.jsx），只量一次会把后长出来的部分裁在初始盒子里。
+// 节奏照旧 0 / 300 / 1200 ms（旧实现如此，2026-10-19 重构时只剩一次）。
 export const FRAME_BOOT_WAIT_MS = 3000;
+const FALLBACK_MEASURE_DELAYS = [300, 1200];
 
 /** 等 root 的 data-frame-boot="done"，到点没来就放行，按当时的尺寸量。 */
 export function waitForFrameBoot(root, { timeout = FRAME_BOOT_WAIT_MS, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
@@ -281,21 +282,33 @@ export function waitForFrameBoot(root, { timeout = FRAME_BOOT_WAIT_MS, setTimer 
   });
 }
 
-async function measureFallback(iframe, box) {
-  const scale = Number(box.dataset.scale) || 1;
+/** → 'measured'（摆好并写了 fitted）、'failed'（错误页，确定的，不重测）、'pending'（还量不出）。 */
+async function measureFallbackOnce(iframe, box, scale) {
   try { await iframe.contentDocument?.fonts?.ready; } catch { /* 字体集合不可达也照量 */ }
   const root = iframe.contentDocument?.documentElement;
   if (root && root.dataset.frameBoot !== 'done'
     && iframe.contentDocument.querySelector('script[data-preview-script], [data-preview-mount]')) {
     await waitForFrameBoot(root);
   }
-  requestAnimationFrame(() => {
-    const m = measureStage(iframe);
-    if (!m) return;
-    if (m.failed) { failNote(box, m.detail); return; }
-    placeFrame(iframe, box, m, scale);
-    cardSettled(box, 'fitted');
-  });
+  const m = measureStage(iframe);
+  if (!m) return 'pending';
+  if (m.failed) { failNote(box, m.detail); return 'failed'; }
+  placeFrame(iframe, box, m, scale);
+  cardSettled(box, 'fitted');
+  return 'measured';
+}
+
+function measureFallback(iframe, box) {
+  const scale = Number(box.dataset.scale) || 1;
+  let i = 0;
+  const run = () => {
+    measureFallbackOnce(iframe, box, scale).then((outcome) => {
+      if (outcome === 'failed' || i >= FALLBACK_MEASURE_DELAYS.length) return;
+      setTimeout(run, FALLBACK_MEASURE_DELAYS[i]);
+      i += 1;
+    });
+  };
+  run();
 }
 
 /** 量 shadow 里的机壳：host 先取消缩放，机壳相对 host 的偏移即 iframe 文档坐标里的 x/y。 */

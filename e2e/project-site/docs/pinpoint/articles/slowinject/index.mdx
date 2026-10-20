@@ -1,0 +1,17 @@
+---
+title: 慢注入帧
+summary: 帧里的裸脚本在 load 后才把内容长出来，回退 iframe 的卡片要照着重摆。
+---
+
+# 慢注入帧
+
+带裸内联脚本（非 preview-script）的帧，卡片侧归「来路不明」走回退 iframe（static-card-lib.js
+classifyFrameScript）。帧级 `shell = "comp"`：台子随内容长高。脚本在 load 后 700ms 才注入
+12 行内容：回退帧的量尺要再量，不能把后长出来的内容裁在初始盒子里（r5 B5，
+e2e/article-canvas.spec.js 守）。
+
+<Section id="late" title="慢注入">
+
+<Canvas frames={["late"]} />
+
+</Section>
