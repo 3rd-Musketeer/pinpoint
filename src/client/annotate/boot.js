@@ -20,7 +20,7 @@ export function bootAnnotate() {
   // 标注的工具条、侧栏、元素标注都不在文章页上起：画布标注只在画布页做。
   if (window.__pinpointProse && window.__pinpointEntry) {
     var startProse = function () {
-      startProseComments({ server: ctx.SERVER, entry: String(window.__pinpointEntry), prose: window.__pinpointProse });
+      startProseComments({ server: ctx.SERVER, entry: String(window.__pinpointEntry) });
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startProse, { once: true });
     else startProse();
