@@ -423,50 +423,6 @@ test('进入编辑对齐锚点，打字不挪自己；上方变高往上挤，�
   }
 });
 
-test('卡片顶部在视口里并且露出一行，点高亮不滚页面', async ({ page, request }) => {
-  test.setTimeout(180_000);
-  const art = articleDir('viewport');
-  fs.mkdirSync(art.project, { recursive: true });
-  // 第六段垫到首屏以下：滚到它时，卡片顶能落在视口底部（旧判定线 innerHeight − 144 以下）。
-  const lowered = articleSource().replace('<p id="p6">', '<p id="p6" style="margin-top:1400px">');
-  fs.writeFileSync(art.source, lowered);
-  try {
-    const doc = await (await request.get(`/annotations/@prose?entry=${art.pageId}`)).json();
-    const saved = await request.post('/save', {
-      data: {
-        entry: art.pageId, page: '@prose', path: '/', baseRevision: doc.revision,
-        annotations: [rowOf('deep', 1, PARAS[5], '长正文'.repeat(60), undefined, art.article)],
-      },
-    });
-    expect(saved.ok()).toBe(true);
-    await openArticle(page, art.article);
-    await alignedGeometry(page);
-    // 卡片跟着引文走。先把引文滚近视口，等右栏重排后再按稳定后的顶部微调到视口底部：
-    // 旧判定线（innerHeight − 144）以下，仍露出一行。一次算好目标会被这一次重排打偏。
-    await page.evaluate(() => {
-      const card = document.querySelector('.pp-thread[data-id="deep"]');
-      window.scrollTo(0, card.getBoundingClientRect().top + window.scrollY - 200);
-    });
-    await page.evaluate(() => {
-      const top = document.querySelector('.pp-thread[data-id="deep"]').getBoundingClientRect().top;
-      window.scrollBy(0, Math.round(top - (window.innerHeight - 80)));
-    });
-    await expect.poll(() => page.evaluate(() => {
-      const top = document.querySelector('.pp-thread[data-id="deep"]').getBoundingClientRect().top;
-      return top > window.innerHeight - 144 && top + 40 <= window.innerHeight - 24;
-    })).toBe(true);
-    const scrollBefore = await page.evaluate(() => window.scrollY);
-    await page.locator('mark.pp-hl[data-ids~="deep"]').click();
-    await expect(page.locator('.pp-thread[data-id="deep"]')).toHaveClass(/on/);
-    await page.waitForTimeout(300); // 静默窗口：旧条件会在这一拍里滚页，修后 scrollY 不动
-    expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
-  } finally {
-    fs.rmSync(art.project, { recursive: true, force: true });
-    fs.rmSync(art.ledger, { force: true });
-    await closeSettled(page);
-  }
-});
-
 // 把卡片顶滚到视口下沿以上 exposed 像素处。滚完右栏会重排一次，所以分两步。
 async function exposeCardTop(page, id, exposed) {
   await page.evaluate((cardId) => {
@@ -485,10 +441,11 @@ async function exposeCardTop(page, id, exposed) {
   }, { cardId: id, shown: exposed })).toBe(true);
 }
 
-test('卡片顶部只露出约 50px，点高亮不滚；露出不到一行才滚', async ({ page, request }) => {
+test('点高亮滚不滚按露出多少定：露出一行不滚、只露约 50px 不滚、不到一行才滚', async ({ page, request }) => {
   test.setTimeout(180_000);
-  const art = articleDir('edge');
+  const art = articleDir('viewport');
   fs.mkdirSync(art.project, { recursive: true });
+  // 第六段垫到首屏以下：滚到它时，卡片顶能落在视口底部（旧判定线 innerHeight − 144 以下）。
   const lowered = articleSource().replace('<p id="p6">', '<p id="p6" style="margin-top:1400px">');
   fs.writeFileSync(art.source, lowered);
   try {
@@ -503,36 +460,62 @@ test('卡片顶部只露出约 50px，点高亮不滚；露出不到一行才滚
     await openArticle(page, art.article);
     await alignedGeometry(page);
 
-    // 50px 比一行多，比旧判定要求的 64px 少。点高亮不该把正在看的正文拉走。
-    await exposeCardTop(page, 'deep', 50);
-    const shown = await page.evaluate(() => {
-      const top = document.querySelector('.pp-thread[data-id="deep"]').getBoundingClientRect().top;
-      return window.innerHeight - top;
+    await test.step('卡片顶部在视口里并且露出一行，点高亮不滚页面', async () => {
+      // 卡片跟着引文走。先把引文滚近视口，等右栏重排后再按稳定后的顶部微调到视口底部：
+      // 旧判定线（innerHeight − 144）以下，仍露出一行。一次算好目标会被这一次重排打偏。
+      await page.evaluate(() => {
+        const card = document.querySelector('.pp-thread[data-id="deep"]');
+        window.scrollTo(0, card.getBoundingClientRect().top + window.scrollY - 200);
+      });
+      await page.evaluate(() => {
+        const top = document.querySelector('.pp-thread[data-id="deep"]').getBoundingClientRect().top;
+        window.scrollBy(0, Math.round(top - (window.innerHeight - 80)));
+      });
+      await expect.poll(() => page.evaluate(() => {
+        const top = document.querySelector('.pp-thread[data-id="deep"]').getBoundingClientRect().top;
+        return top > window.innerHeight - 144 && top + 40 <= window.innerHeight - 24;
+      })).toBe(true);
+      const scrollBefore = await page.evaluate(() => window.scrollY);
+      await page.locator('mark.pp-hl[data-ids~="deep"]').click();
+      await expect(page.locator('.pp-thread[data-id="deep"]')).toHaveClass(/on/);
+      await page.waitForTimeout(300); // 静默窗口：旧条件会在这一拍里滚页，修后 scrollY 不动
+      expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
     });
-    expect(shown).toBeGreaterThanOrEqual(40);
-    expect(shown).toBeLessThan(64);
-    const scrollAt50 = await page.evaluate(() => window.scrollY);
-    await page.locator('mark.pp-hl[data-ids~="deep"]').click();
-    await expect(page.locator('.pp-thread[data-id="deep"]')).toHaveClass(/on/);
-    await page.waitForTimeout(300); // 静默窗口：旧的 64px 判定会在这一拍里滚页
-    expect(await page.evaluate(() => window.scrollY)).toBe(scrollAt50);
 
-    // 露出不到一行：点高亮才滚，滚完顶部回到视口里。
-    await page.keyboard.press('Escape');
-    await expect(page.locator('.pp-thread.on')).toHaveCount(0);
-    await exposeCardTop(page, 'deep', 30);
-    const short = await page.evaluate(() => {
-      const top = document.querySelector('.pp-thread[data-id="deep"]').getBoundingClientRect().top;
-      return window.innerHeight - top;
+    await test.step('只露出约 50px：比一行多、比旧判定要求的 64px 少，点高亮不该把正在看的正文拉走', async () => {
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.pp-thread.on')).toHaveCount(0);
+      await exposeCardTop(page, 'deep', 50);
+      const shown = await page.evaluate(() => {
+        const top = document.querySelector('.pp-thread[data-id="deep"]').getBoundingClientRect().top;
+        return window.innerHeight - top;
+      });
+      expect(shown).toBeGreaterThanOrEqual(40);
+      expect(shown).toBeLessThan(64);
+      const scrollAt50 = await page.evaluate(() => window.scrollY);
+      await page.locator('mark.pp-hl[data-ids~="deep"]').click();
+      await expect(page.locator('.pp-thread[data-id="deep"]')).toHaveClass(/on/);
+      await page.waitForTimeout(300); // 静默窗口：旧的 64px 判定会在这一拍里滚页
+      expect(await page.evaluate(() => window.scrollY)).toBe(scrollAt50);
     });
-    expect(short).toBeLessThan(40);
-    const scrollAt30 = await page.evaluate(() => window.scrollY);
-    await page.locator('mark.pp-hl[data-ids~="deep"]').click();
-    await expect(page.locator('.pp-thread[data-id="deep"]')).toHaveClass(/on/);
-    await expect.poll(() => page.evaluate((before) => {
-      const top = document.querySelector('.pp-thread[data-id="deep"]').getBoundingClientRect().top;
-      return top < window.innerHeight - 40 && window.scrollY !== before;
-    }, scrollAt30), { timeout: 5_000 }).toBe(true);
+
+    await test.step('露出不到一行：点高亮才滚，滚完顶部回到视口里', async () => {
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.pp-thread.on')).toHaveCount(0);
+      await exposeCardTop(page, 'deep', 30);
+      const short = await page.evaluate(() => {
+        const top = document.querySelector('.pp-thread[data-id="deep"]').getBoundingClientRect().top;
+        return window.innerHeight - top;
+      });
+      expect(short).toBeLessThan(40);
+      const scrollAt30 = await page.evaluate(() => window.scrollY);
+      await page.locator('mark.pp-hl[data-ids~="deep"]').click();
+      await expect(page.locator('.pp-thread[data-id="deep"]')).toHaveClass(/on/);
+      await expect.poll(() => page.evaluate((before) => {
+        const top = document.querySelector('.pp-thread[data-id="deep"]').getBoundingClientRect().top;
+        return top < window.innerHeight - 40 && window.scrollY !== before;
+      }, scrollAt30), { timeout: 5_000 }).toBe(true);
+    });
   } finally {
     fs.rmSync(art.project, { recursive: true, force: true });
     fs.rmSync(art.ledger, { force: true });
