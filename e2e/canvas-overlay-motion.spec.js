@@ -790,14 +790,6 @@ test('画布浮层：预热停驻后点开在预算内可交互，停驻 3 秒�
   });
 
   await test.step('停驻 3 秒：工作台不再排定时器与动画帧', async () => {
-    // 「停驻」只代表文章页把浮层停下了；停驻的工作台文档自己的装载尾巴（mountBoard /
-    // setActiveEntry / 首访聚焦的平滑滚动 / React Query GC 排程）可能还没跑完（负载下
-    // 实测探针窗里能数到十几个）。先等板落定，探针装上后等「连续两次采样零新增」
-    // 才算真静下来，清零开量——不停就一定有新增，这正是这条门要守的。
-    await expect.poll(() => page.evaluate(() => {
-      const w = window.pinpointOverlay.frame()?.contentWindow;
-      return !!(w?.workbench && w.workbench.whenBoardSettled());
-    }), { timeout: 30_000 }).toBe(true);
     await page.evaluate(() => {
       const win = window.pinpointOverlay.frame().contentWindow;
       const counts = { timeout: 0, interval: 0, raf: 0 };
@@ -809,17 +801,6 @@ test('画布浮层：预热停驻后点开在预算内可交互，停驻 3 秒�
         counts,
         restore: () => { win.setTimeout = orig.timeout; win.setInterval = orig.interval; win.requestAnimationFrame = orig.raf; },
       };
-    });
-    await expect.poll(() => page.evaluate(() => {
-      const p = window.pinpointOverlay.frame().contentWindow.__parkProbe;
-      const now = p.counts.timeout + p.counts.interval + p.counts.raf;
-      if (now === p.lastCount) p.quiet = (p.quiet || 0) + 1;
-      else { p.quiet = 0; p.lastCount = now; }
-      return p.quiet >= 2;
-    }), { timeout: 30_000 }).toBe(true);
-    await page.evaluate(() => {
-      const p = window.pinpointOverlay.frame().contentWindow.__parkProbe;
-      p.counts.timeout = 0; p.counts.interval = 0; p.counts.raf = 0;
     });
     await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 3000))); // 静默窗口：停驻期间不该有新回调
     const counts = await page.evaluate(() => {
@@ -938,11 +919,6 @@ test('画布浮层：停驻跨过整分钟，工作台不再排定时器', async
   await page.setViewportSize({ width: 1440, height: 900 });
   await openArticle(page);
   await expect.poll(() => page.evaluate(() => window.pinpointOverlay?.settled() && window.pinpointOverlay?.phase()), { timeout: 60_000 }).toBe('parked');
-  // 同上：等停驻的工作台自己的装载尾巴落定（板上 settle 先于探针窗，见「停驻 3 秒」条）。
-  await expect.poll(() => page.evaluate(() => {
-    const w = window.pinpointOverlay.frame()?.contentWindow;
-    return !!(w?.workbench && w.workbench.whenBoardSettled());
-  }), { timeout: 30_000 }).toBe(true);
   await page.evaluate(() => {
     const win = window.pinpointOverlay.frame().contentWindow;
     const counts = { timeout: 0, interval: 0 };
@@ -950,31 +926,6 @@ test('画布浮层：停驻跨过整分钟，工作台不再排定时器', async
     win.setTimeout = function (...args) { counts.timeout += 1; return orig.timeout.apply(this, args); };
     win.setInterval = function (...args) { counts.interval += 1; return orig.interval.apply(this, args); };
     win.__minuteProbe = { counts, restore: () => { win.setTimeout = orig.timeout; win.setInterval = orig.interval; } };
-  });
-  // 先把「停驻前已排下」的尾巴烧干净（诊断 persist/upload 2s、几何落盘 600ms、重试 3s
-  // 等——保存与 outbox 按契约停驻期间照常落盘，不算停驻期排程）：一轮轮快进 3 秒，
-  // 哪一轮零新增才算烧完；尾巴里若有自续排的循环，这里会一直烧下去直到 180s 超时，
-  // 那正是这条门要守的回归。
-  let last = -1;
-  for (;;) {
-    await page.clock.runFor(3_000);
-    const now = await page.evaluate(() => {
-      const c = window.pinpointOverlay.frame().contentWindow.__minuteProbe.counts;
-      return c.timeout + c.interval;
-    });
-    if (now === last) break;
-    last = now;
-  }
-  await page.evaluate(() => {
-    const probe = window.pinpointOverlay.frame().contentWindow.__minuteProbe;
-    probe.counts.timeout = 0; probe.counts.interval = 0;
-  });
-  // 量第二个 65 秒窗：被第一个窗的快进逼出来的尾巴（其回调里再排的程）落在窗 1；
-  // 停驻期真正自续排的（如 ios-kit 状态栏时钟那种每分钟到点的）两个窗都会排，窗 2 照抓。
-  await page.clock.runFor(65_000);
-  await page.evaluate(() => {
-    const probe = window.pinpointOverlay.frame().contentWindow.__minuteProbe;
-    probe.counts.timeout = 0; probe.counts.interval = 0;
   });
   await page.clock.runFor(65_000);
   const counts = await page.evaluate(() => {
