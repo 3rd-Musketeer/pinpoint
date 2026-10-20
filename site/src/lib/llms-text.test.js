@@ -38,3 +38,14 @@ test('stripEsm：连续两条 ASI import，空行后的正文带 ASCII 分号原
   const mdx = 'import a from "1"\nimport b from "2"\n\n正文; 有分号。\n';
   assert.equal(stripEsm(mdx), '正文; 有分号。');
 });
+
+test('stripEsm：代码围栏里的 import 原样保留，是示例不是模块声明（r4 review 建议 4）', () => {
+  const mdx = '# 用法\n\n```jsx\nimport {\n  Nav\n} from "kit";\n\nconst x = 1;\n```\n\n正文。\n';
+  assert.equal(stripEsm(mdx), '# 用法\n\n```jsx\nimport {\n  Nav\n} from "kit";\n\nconst x = 1;\n```\n\n正文。');
+  // 单行、~~~ 围栏、未闭合的围栏同样保留。
+  assert.equal(stripEsm('```js\nimport x from "y";\n```\n正文。'), '```js\nimport x from "y";\n```\n正文。');
+  assert.equal(stripEsm('~~~\nimport x from "y";\n~~~\n正文。'), '~~~\nimport x from "y";\n~~~\n正文。');
+  assert.equal(stripEsm('```jsx\nimport x from "y";\n\nnever closed'), '```jsx\nimport x from "y";\n\nnever closed');
+  // 围栏外的 import 照剥。
+  assert.equal(stripEsm('import x from "y";\n\n```jsx\nimport z from "z";\n```\n\n正文。'), '```jsx\nimport z from "z";\n```\n\n正文。');
+});
