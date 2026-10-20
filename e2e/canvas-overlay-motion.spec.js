@@ -969,6 +969,13 @@ test('画布浮层：停驻跨过整分钟，工作台不再排定时器', async
     const probe = window.pinpointOverlay.frame().contentWindow.__minuteProbe;
     probe.counts.timeout = 0; probe.counts.interval = 0;
   });
+  // 量第二个 65 秒窗：被第一个窗的快进逼出来的尾巴（其回调里再排的程）落在窗 1；
+  // 停驻期真正自续排的（如 ios-kit 状态栏时钟那种每分钟到点的）两个窗都会排，窗 2 照抓。
+  await page.clock.runFor(65_000);
+  await page.evaluate(() => {
+    const probe = window.pinpointOverlay.frame().contentWindow.__minuteProbe;
+    probe.counts.timeout = 0; probe.counts.interval = 0;
+  });
   await page.clock.runFor(65_000);
   const counts = await page.evaluate(() => {
     const probe = window.pinpointOverlay.frame().contentWindow.__minuteProbe;
