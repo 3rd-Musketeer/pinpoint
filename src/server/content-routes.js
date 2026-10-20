@@ -168,7 +168,10 @@ export default function contentRoutes() {
               warnKitOnce('ios-kit.js 里没有自注入字面量，按原样服务（老地址 /annotate.js）');
             }
             const kitMtimeMs = fs.statSync(kitFile).mtimeMs;
-            const etag = `"${clientSrc}-${Math.round(kitMtimeMs)}"`;
+            // mtime 原值不取整（R5 S2，与 http-respond 的 statEtag 同一防坑）：
+            // APFS 的 mtime 带亚毫秒，取整到毫秒后同一毫秒内的等长重写 ETag 不变，
+            // 带旧 ETag 重取会 304 回旧字节。
+            const etag = `"${clientSrc}-${kitMtimeMs}"`;
             res.setHeader('Cache-Control', 'no-cache');
             res.setHeader('ETag', etag);
             if (etagMatches(req.headers['if-none-match'], etag)) {

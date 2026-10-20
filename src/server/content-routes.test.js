@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
@@ -142,7 +144,7 @@ test('served ios-kit.js self-injection references the hashed artifact URL', asyn
   assert.equal(res.statusCode, 200);
   assert.match(res.headers['Content-Type'], /^application\/javascript/);
   assert.equal(res.headers['Cache-Control'], 'no-cache', '换版后新哈希要立刻跟着发出去');
-  assert.match(res.headers.ETag, /^"\/annotate\.[0-9a-f]{10}\.js-\d+"$/, 'ETag 由产物地址 + kit 源 mtime 拼');
+  assert.match(res.headers.ETag, /^"\/annotate\.[0-9a-f]{10}\.js-[\d.]+"$/, 'ETag 由产物地址 + kit 源 mtime 原值拼（R5 S2：不取整）');
   assert.ok(/s\.src = '\/annotate\.[0-9a-f]{10}\.js';/.test(res.text), 'self-injection swapped to the hash URL');
   assert.ok(!res.text.includes("s.src = '/annotate.js';"), 'old literal gone from the served bytes');
   // HEAD 同路径同头，无响应体。
@@ -178,4 +180,33 @@ test('缺失文件的真 404 带 no-cache（review 建议 3：URL 之后可能�
   assert.equal(res.statusCode, 404);
   assert.equal(res.headers['Cache-Control'], 'no-cache');
   assert.match(res.text, /^not found: \/kits\/nope\.css$/);
+});
+
+
+test('kit ETag 用 mtime 原值不取整（R5 S2）：取整会让同毫秒等长重写 304 回旧字节', async (t) => {
+  await ensureAnnotateBundle();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-content-routes-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  // 独立的临时 root：只走 ios-kit.js 这条路由，不碰仓里的 kit 文件。
+  // 「同毫秒等长重写」无法在测试里稳定构造（utimes 只有毫秒），改为钉死性质本身：
+  // ETag 内嵌 stat.mtimeMs 原值——APFS 的亚毫秒一被 Math.round 折掉，等长重写就
+  // 会撞出不变的 ETag（http-respond statEtag 的防坑注释）。
+  const kitDir = path.join(dir, 'content', 'kits', 'ios');
+  fs.mkdirSync(kitDir, { recursive: true });
+  const kitFile = path.join(kitDir, 'ios-kit.js');
+  fs.writeFileSync(kitFile, '/* kit */\n');
+  const stat = fs.statSync(kitFile);
+  if (stat.mtimeMs % 1 === 0) {
+    t.skip('这块盘的 mtime 没有亚毫秒粒度，取整无从谈起');
+    return;
+  }
+  const plugin = contentRoutes();
+  let handler;
+  plugin.configureServer({ config: { root: dir }, middlewares: { use(fn) { handler = fn; } } });
+  const { res } = await callKit(handler, 'GET', '/kits/ios/ios-kit.js');
+  assert.equal(res.statusCode, 200);
+  assert.ok(
+    res.headers.ETag.includes(`-${stat.mtimeMs}"`),
+    `ETag 应内嵌 mtime 原值 ${stat.mtimeMs}，实际 ${res.headers.ETag}（Math.round 的旧实现这里必挂）`,
+  );
 });
