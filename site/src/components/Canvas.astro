@@ -14,7 +14,7 @@
 // 错误只显示一次：带 section 的在本卡片里，页级的（含写在 Section 外的 Canvas，这时不出卡片）在页顶错误条。
 // 缺源文件的帧照占位置，显示占位格“缺帧 <id>”，和画布上那一格的错误面板对应。
 import { DOC_WIDTHS, cardModel } from '../lib/canvas-card.js';
-import { canvasHash } from '../lib/canvas-overlay.js';
+import { canvasHash } from '../../../src/shared/canvas-hash.js';
 
 interface Props { section?: string; num?: string; frames?: unknown; shell?: string }
 const { section, num } = Astro.props;

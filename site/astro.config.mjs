@@ -34,7 +34,7 @@ const instanceRoot = path.join(siteRoot, '.astro-cache', process.argv.includes('
 function devFsAllow() {
   return [siteRoot, path.join(repoRoot, 'node_modules'),
     ...['src/shared/ledger-frames.js', 'src/client/lib/ledger-reader.js',
-      'src/shared/workbench-url.js', 'src/shared/annotate-page-key.js'].map((name) => path.join(repoRoot, name)),
+      'src/shared/workbench-url.js', 'src/shared/canvas-hash.js', 'src/shared/annotate-page-key.js'].map((name) => path.join(repoRoot, name)),
     ...projects.map((p) => p.dir)];
 }
 

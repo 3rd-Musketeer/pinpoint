@@ -8,7 +8,8 @@
 // 修饰键 / 中键点这些入口：照常走链接（顶栏和卡片按钮在新标签页开整页画布，右栏卡片在新标签页开带浮层的文章）。
 import { canvasViewHref } from '../../../src/shared/workbench-url.js';
 import { layers } from './layers.js';
-import { canvasHash, embedCanvasSrc, embedMessage, entrySection, overlayDocNext, overlayPhaseNext, parseCanvasHash, prewarmSection } from './canvas-overlay.js';
+import { canvasHash, parseCanvasHash } from '../../../src/shared/canvas-hash.js';
+import { embedCanvasSrc, embedMessage, entrySection, overlayDocNext, overlayPhaseNext, prewarmSection } from './canvas-overlay.js';
 import { OV_CLOSE_MS, OV_EASE, OV_OPEN_MS, OV_REDUCED_MS, OV_SCALE, overlayOrigin } from './overlay-motion.js';
 
 // 等工作台装好、标注账本水合完的上限：到点还没好就只开着画布，不再定位。

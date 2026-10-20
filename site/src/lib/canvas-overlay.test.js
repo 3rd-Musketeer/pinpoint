@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { canvasHash, embedCanvasSrc, embedMessage, entrySection, overlayDocNext, overlayPhaseNext, parseCanvasHash, prewarmSection } from './canvas-overlay.js';
+import { canvasHash, parseCanvasHash } from '../../../src/shared/canvas-hash.js';
+import { embedCanvasSrc, embedMessage, entrySection, overlayDocNext, overlayPhaseNext, prewarmSection } from './canvas-overlay.js';
 
 test('canvas hash: section, optional frame / annotation, round trip', () => {
   assert.equal(canvasHash('flow'), '#canvas=flow');

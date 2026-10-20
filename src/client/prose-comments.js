@@ -40,6 +40,7 @@
  * 对外仍导出 buildTextIndex、rangeToOffsets、unpaint、paintSegments、startProseComments。 */
 
 import { locateQuote } from '../shared/text-quote.js';
+import { canvasHash } from '../shared/canvas-hash.js';
 import { isProseClosed, isProseRow, newProseRow } from '../shared/prose-thread.js';
 
 import { buildTextIndex, sectionAtFor } from './prose/text-index.js';
@@ -191,11 +192,11 @@ export function startProseComments(options) {
   }
 
   function canvasHref(item) {
-    var q = new URLSearchParams({ canvas: item.section });
     var html = isHtmlFrame(item.section, item.frameId);
-    if (!Number.isInteger(item.row.n) || html) q.set('frame', item.frameId);
-    if (Number.isInteger(item.row.n)) q.set('ann', String(item.row.n));
-    return '#' + q.toString();
+    return canvasHash(item.section, {
+      frame: (!Number.isInteger(item.row.n) || html) ? item.frameId : '',
+      ann: Number.isInteger(item.row.n) ? item.row.n : '',
+    });
   }
 
   function orderKey(row) {
