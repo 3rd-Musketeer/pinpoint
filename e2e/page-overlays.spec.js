@@ -37,7 +37,7 @@ test('连续开关四个全页共享 SSE，同源请求继续完成，浮层收�
   const key = ledger || pageKeyFromPathname(docPath);
   const doc = await (await request.get(`/annotations/${key}?entry=${entry}`)).json();
   const res = await request.post('/save', { data: { page: key, entry, path: docPath, baseRevision: doc.revision,
-    annotations: [...doc.annotations, { id: 'p3-shared', type: 'element', content: '共享连接更新', status: 'open', selector: '#top-title', text: '标题' }] } });
+    annotations: [...doc.annotations, { id: 'p3-shared', type: 'element', content: '共享连接更新', status: 'open', targets: [{ ref: 'i1', selector: '#top-title', text: '标题' }] }] } });
   expect(res.ok()).toBe(true);
   await expect.poll(() => page.locator(overlayFrame('long-page')).evaluate(el => el.contentWindow.pinpoint.annotations.some(a => a.id === 'p3-shared'))).toBe(true);
   const n = (await res.json()).annotations.find(a => a.id === 'p3-shared').n;
