@@ -30,7 +30,7 @@ pinpoint 服务这样拉起：`PINPOINT_SITE_VITE_BASE=/_astro/ npm run -s site:
 | `/<project>/wiki/<名字>/` | wiki 词条：状态、定义、正文、用到它的文章 |
 | `/<project>/llms.txt` | agent 视图：全部文章 MDX 原文（保留 `[[ ]]`）与 wiki 词条 |
 
-article id `wiki` 和 `concepts` 保留给 wiki 路由，用了构建报错。
+article id `wiki` 保留给 wiki 路由，用了构建报错。
 
 ## 写文章（`articles/<id>/index.mdx`）
 
