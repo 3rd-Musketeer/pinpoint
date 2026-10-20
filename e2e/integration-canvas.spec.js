@@ -110,6 +110,9 @@ test('integrated navigation, pan, zoom and edits preserve persisted targets acro
     expect(hit.visible).toBe(true);
     await page.mouse.click(hit.x, hit.y);
     await save(page, 'integration new mark in earlier section');
+    // 与 :96 同一个合法尾写：新建标注的首测量 persist 落盘时会把行写成规范化形状
+    //（带上 messages: []）。等它落了再读，否则后面 reload 读到的形状和这里对不上。
+    await expect.poll(() => (read().find(m => m.content.includes('earlier section'))?.lastRect ? 1 : 0)).toBe(1);
     const final = read();
     expect(final).toHaveLength(2);
     expect(stripLastRect(final.filter(m => m.id === first.id))).toEqual(stripLastRect([edited]));
