@@ -193,7 +193,7 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 
 命令的第一个位置参数是目标。目标有这几种写法：
 
-- 一篇文章：`<project>/<article>`（如 `browser-use/payment-confirm`）。文章网址（`https://pinpoint.localhost/<project>/<article>/`、带 `#锚点` 的也行）、画布视图网址（`/workbench/?page=<页 id>`，旧的 `/?page=` 也认）、页 id `<project>_<article>` 和工作台“复制 @page”给的 `@page:<页 id>` 都认，输出一律打斜杠形。
+- 一篇文章：`<project>/<article>`（如 `browser-use/payment-confirm`）。文章网址（`https://pinpoint.localhost/<project>/<article>/`、带 `#锚点` 的也行）、画布视图网址（`/workbench/?page=<页 id>`）、页 id `<project>_<article>` 和工作台“复制 @page”给的 `@page:<页 id>` 都认，输出一律打斜杠形。
 - 一个 project：`<project>`。`show`、`check`、`comments` 接受它，`locate`、`mark`、`reply`、`build`、`shot` 不接受（标注和帧都在文章里）。
 - 存量页：它的 id，或 `@page:<页 id>`。
 

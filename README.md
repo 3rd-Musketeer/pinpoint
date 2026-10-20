@@ -159,7 +159,7 @@ ppnt migrate <page id> --project <root>  # copy a legacy page into an article, t
 AGENTS.md                    Agent entry — 开工读序 + 坑与约定 + 技能路由
 CONTEXT.md                   Vocabulary — one definition per word, with where it lives in code
 docs/                        Rules and runbooks: projects, board-schema, registry, annotation, design; adr/ = decisions
-index.html                   WORKBENCH shell, served at /workbench/ (/?page=… and /index.html redirect there) — full-bleed canvas + floating glass panel + bottom strip
+index.html                   WORKBENCH shell, served at /workbench/ — full-bleed canvas + floating glass panel + bottom strip
 site/                        Article site (Astro): article pages, wiki pages, [[ ]] refs, llms.txt
 
 src/                         pinpoint itself — the disk layout moves, the served URLs never do

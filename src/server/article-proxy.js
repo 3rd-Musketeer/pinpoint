@@ -6,7 +6,6 @@
  * - 文章页（/<project>/<article>/）的 HTML 响应注入标注客户端，与 /sites/ 同一份
  *   injectAnnotateClient：桶 = 这篇的页 id（src/shared/project-ids.js articlePageId），并带上
  *   __pinpointProse，客户端只跑正文评论。project 首页、wiki 页不注入（没有评论面）。
- * - 旧的 wiki 地址 /<project>/concepts/… 直接 301 到 /<project>/wiki/…，不拉起站点（ADR 0045）。
  *   ?annotate=off 单请求不注入。非 HTML 原样透传。
  * - 站点没就绪时：浏览器导航（Accept 含 text/html）拿到一张自动刷新的「站点
  *   启动中」页（503）；站点起不来（failed）时那张页写原因和日志尾巴。页面里的

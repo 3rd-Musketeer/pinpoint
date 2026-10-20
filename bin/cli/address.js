@@ -4,7 +4,7 @@
  * 目标（命令的第一个位置参数）：
  *   <project>/<article>       一篇文章（输出一律打这个斜杠形）
  *   <project>_<article>       同一篇文章的页 id（旧写法，照认）
- *   文章网址                   https://pinpoint.localhost/<project>/<article>/…、/<project>/<article>/、/workbench/?page=<页 id>（旧的 /?page= 照认）
+ *   文章网址                   https://pinpoint.localhost/<project>/<article>/…、/<project>/<article>/、/workbench/?page=<页 id>
  *   @page:<页 id>             工作台“复制 @page”给的写法，同页 id
  *   <project>                 一个 project（show / check / comments 用）
  *   <页 id>                   存量页

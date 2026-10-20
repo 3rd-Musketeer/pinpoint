@@ -27,7 +27,7 @@ pinpoint 服务这样拉起：`PINPOINT_SITE_VITE_BASE=/_astro/ npm run -s site:
 | `/<project>/` | project 首页：这个 project 的文章列表、wiki 词条、空 ref 列表 |
 | `/<project>/<article>/` | 文章：顶栏从“全部文章”起、不显示 project 标题，project 是标题下的小标签，标签页标题只有文章标题；左目录（sections）、正文、右评论栏（`[data-pp-rail]`，经 pinpoint 打开时由注入的标注客户端填，见 `docs/annotation.md`“正文评论”）、wiki 面板 |
 | `/<project>/wiki/` | 这个 project 的 wiki 词条列表 |
-| `/<project>/wiki/<名字>/` | wiki 词条：状态、定义、正文、用到它的文章。旧地址 `/<project>/concepts/<名字>/` 由服务 301 到这里（`src/server/lib/article-routes.js`），不经站点 |
+| `/<project>/wiki/<名字>/` | wiki 词条：状态、定义、正文、用到它的文章 |
 | `/<project>/llms.txt` | agent 视图：全部文章 MDX 原文（保留 `[[ ]]`）与 wiki 词条 |
 
 article id `wiki` 和 `concepts` 保留给 wiki 路由，用了构建报错。
