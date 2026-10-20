@@ -101,9 +101,16 @@ export function initCanvasOverlay() {
   let docGen = 0;       // 每次装 / 重试换文档 +1，随 src 传给工作台；消息按它核对归属，
                         // 重试后旧文档迟到的消息作废（代次语义从 until 时代保留）。
   let docWaiters = [];
+  let autoReloads = 0;
+  let reloadTimer = 0;
   const STATUS_TEXT = { loading: 'loading', ready: '', 'board-error': '', retry: 'retry' };
 
   function setDocState(next) {
+    if (next === 'ready') {
+      clearTimeout(reloadTimer);
+      reloadTimer = 0;
+      autoReloads = 0;
+    }
     if (next === docState) return;
     docState = next;
     showStatus(STATUS_TEXT[next] ?? 'loading');
@@ -137,22 +144,53 @@ export function initCanvasOverlay() {
   // 跨域错误页与「装上了却没有工作台」是这里仅有的两处本页判定的失败，其余失败都由工作台主动报。
   // 文档被换掉（pagehide）就退回 loading：旧文档报过的 ready 不能替新文档作数，新文档的
   // 就绪消息会重新推进状态机。只能挂在同源的、装上了的文档上，所以每次 load 挂一次。
-  const onFrameGone = () => setDocState('loading');
+  function reloadFrame() {
+    // 自动与手动重试共用换文档路径；预热时没有 state，也必须能恢复。
+    try { delete iframe.contentWindow.__wbBootError; } catch { /* 失败页读不到 */ }
+    docGen += 1;
+    const section = state?.section || new URL(iframe.src).searchParams.get('section');
+    setPhase('discard');
+    setDocState('loading');
+    iframe.src = embedCanvasSrc(pageId, section, docGen);
+    if (state) wakeFrame();
+    else setPhase('prewarm');
+  }
+
+  function documentFailed() {
+    // 同一文档可能先报 boot-error、再触发 load，不能算两次失败。
+    if (reloadTimer || docState === 'retry') return;
+    if (autoReloads >= 2) {
+      setDocState('retry');
+      if (phase === 'warming') setPhase('park');
+      return;
+    }
+    autoReloads += 1;
+    setDocState('loading');
+    const gen = docGen;
+    reloadTimer = setTimeout(() => {
+      reloadTimer = 0;
+      if (docGen === gen) reloadFrame();
+    }, 100 * autoReloads);
+  }
+
   const onFrameLoad = () => {
     // load 要等模块脚本结束。跨域错误页（href 读不到），或文档装上了却没有工作台，
     // 都是确定失败。模块还扣着时 load 没到，不在这里判，准备态一直留着。
     // about:blank 是刚建还没导航，不是失败页。
-    // 浮层没开（预热）也照样记下：预热用掉了那次失败导航，点开时就直接是重试。
+    // 浮层没开（预热）也走自动重装；预算耗尽才记为重试。
     let href = '';
     try { href = iframe.contentWindow.location.href; } catch { href = 'dead'; }
     if (!href || href === 'about:blank') return;
     if (!workbenchOf()) {
-      setDocState('retry');
-      // 预热失败不再等停驻回执：点开直接是重试，不卡在预热中。
-      if (phase === 'warming') setPhase('park');
+      documentFailed();
       return;
     }
-    try { iframe.contentWindow.addEventListener('pagehide', onFrameGone); } catch { /* 读不到就等 load 判定 */ }
+    const gen = docGen;
+    try {
+      iframe.contentWindow.addEventListener('pagehide', () => {
+        if (gen === docGen) setDocState('loading');
+      }, { once: true });
+    } catch { /* 读不到就等 load 判定 */ }
   };
 
   function ensureFrame(sectionId) {
@@ -266,14 +304,8 @@ export function initCanvasOverlay() {
     retry.textContent = '重试';
     retry.addEventListener('click', () => {
       if (!state || !iframe) return;
-      // 先清掉旧文档的失败痕迹、换新代次再装：旧文档迟到的消息带着旧代次，会被丢掉。
-      try { delete iframe.contentWindow.__wbBootError; } catch { /* 失败页读不到，换文档后自然没了 */ }
-      docGen += 1;
-      // 换文档：旧的预热与停驻作废，等这份新文档自己报就绪。
-      setPhase('discard');
-      setDocState('loading');
-      iframe.src = embedCanvasSrc(pageId, state.section, docGen);
-      wakeFrame();
+      autoReloads = 0;
+      reloadFrame();
       const nav = ++navigation;
       land({ section: state.section, frame: state.frame, ann: null, fresh: true }, nav);
     });
@@ -434,6 +466,9 @@ export function initCanvasOverlay() {
     if (msg.type === 'parked') { if (phase === 'warming') setPhase('park'); return; }
     if (msg.gen !== docGen) return;
     if (msg.type === 'ready' && msg.pageId && msg.pageId !== pageId) return;
+    if (msg.type === 'boot-error') { documentFailed(); return; }
+    // 入口已确定失败时，板的迟到消息不能取消重装或提前收起准备态。
+    if (reloadTimer && msg.type === 'board-error') return;
     setDocState(overlayDocNext(docState, msg));
   });
 
