@@ -105,6 +105,22 @@ function pageOverlayFrameHtml(url, title) {
     ' title="' + escHtml(title || url) + '"></iframe>';
 }
 
+/* 连续两拍 HMR 时 fetchQuery 只会搭在飞的那班：Query.fetch 不带 cancelRefetch
+   （fetchQuery 的第二个参数根本传不进去）时直接返回在飞的 retryer.promise，
+   第二个调用方拿到的就是上一拍的内容 —— 画布停在旧稿（BACKLOG「连续 HMR 时
+   在飞的帧请求吞掉最新一拍」）。在飞时改走 refetchQueries：它的 cancelRefetch
+   默认 true，悄悄取消在飞请求重拉，旧调用方的 promise 被 query-core 接到新
+   请求上（CancelledError silent → 新 retryer.promise），两边都拿到不旧于自己
+   起跑那一拍的内容。重拉完再走同一条 fetchQuery：新稿不 stale 不加请求；重拉
+   失败时 error 态把查询标回 invalidated，fetchQuery 会再试、再失败照旧上抛。 */
+export function fetchQueryFresh(options) {
+  var state = queryClient.getQueryState(options.queryKey);
+  if (!state || state.fetchStatus !== 'fetching') return queryClient.fetchQuery(options);
+  return queryClient.refetchQueries({ queryKey: options.queryKey }).then(function () {
+    return queryClient.fetchQuery(options);
+  });
+}
+
 export function fetchScreenHtml(pageId, screen) {
   var sc = typeof screen === 'string' ? { id: screen } : screen;
   var url = docScreenUrl(pageId, sc);
@@ -119,8 +135,9 @@ export function fetchScreenHtml(pageId, screen) {
   var fetchUrl = url;
   var page = pageEntry(wbGet().pageManifest, pageId);
   if (page && page.site) fetchUrl += (fetchUrl.indexOf('?') >= 0 ? '&' : '?') + 'annotate=off';
-  // pp2：拉到的就是 dist 屏；缓存只按 SSE 失效重拉。
-  return queryClient.fetchQuery({
+  // pp2：拉到的就是 dist 屏；缓存只按 SSE 失效重拉。fetchQueryFresh：连续两拍
+  // HMR 时不搭在飞的旧班（见上）。
+  return fetchQueryFresh({
     queryKey: ['screen', pageId, sc.id],
     queryFn: function () {
       return fetch(fetchUrl).then(function (r) {

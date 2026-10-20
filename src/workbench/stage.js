@@ -33,7 +33,7 @@ import {
   syncBoardSelection
 } from './board-nav.js';
 import { isComposingKey, isTypingTarget } from '../shared/keys.js';
-import { buildBoardHtml, fetchScreenHtml, loadFailHtml, screenContentHtml } from './screen-load.js';
+import { buildBoardHtml, fetchQueryFresh, fetchScreenHtml, loadFailHtml, screenContentHtml } from './screen-load.js';
 import { CANVAS_ENTRY_ID, isArticleBoard } from './lib/board-entries.js';
 import { boardForTab, resolveTabId, tabIdOfSection } from './lib/board-tabs.js';
 import { screenEntries } from '../shared/board-screens.js';
@@ -159,7 +159,9 @@ async function loadBoard(panel, pageId, loadOptions) {
     // 的 loadPageManifest 是同一条 TanStack 查询（staleTime Infinity），在途即搭车、
     // 之后走缓存，不加请求。
     if (!wbGet().pageManifest) await loadPageManifest();
-    var rawBoard = await queryClient.fetchQuery({
+    // board 与屏都走 fetchQueryFresh：整板重摆在飞时又来一拍 HMR，fetchQuery 只会
+    // 搭在飞的旧班，重摆出的还是上一拍的屏（screen-load.js fetchQueryFresh 有根因）。
+    var rawBoard = await fetchQueryFresh({
       queryKey: ['board', pageId],
       queryFn: function () {
         return fetch(boardUrl(pageId)).then(function (r) {
