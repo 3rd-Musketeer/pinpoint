@@ -66,6 +66,18 @@ var stage = document.getElementById('wbstage');
 var wbRoot = document.getElementById('wbroot') || document.querySelector('.wb');
 var libraryScrollHandler;
 
+// 板容器每次装载整替换 innerHTML，节点不换 —— 查它一处（setActiveTab /
+// setActiveViewport / setActiveEntry / phoneShellEl 都要）。
+function boardPanel() {
+  return document.getElementById('wb-board-panel');
+}
+
+// 换页 / 换 tab / 开页面浮层前把生效实例的草稿取消（草稿的存与丢归 composer）。
+function cancelBoardDraft() {
+  var ann = annotateApi();
+  if (ann && typeof ann.cancelDraft === 'function') ann.cancelDraft();
+}
+
 function scrollToGroup(groupId, options) {
   options = options || {};
   wbSet({ activeGroup: groupId });
@@ -83,9 +95,9 @@ export function switchPage(id, options) {
   showTabs();
   // Annotation API: section id within current board — or a top-level page id.
   // 认页面靠清单，不靠左栏有没有画出那一行 —— 2026-09-04 起模板页默认不显示，
-  // 拿 DOM 当名单会让 `switchPage('doc-library')` 掉进 section 那条分支。
-  if (pageEntry(wbGet().pageManifest, id)
-      || document.querySelector('.wb-page[data-vpage="' + id + '"]')) {
+  // 拿 DOM 当名单会让 `switchPage('doc-library')` 掉进 section 那条分支。左栏行
+  // 集就是清单的渲染（data-vpage 只是 e2e 选择器），查清单已覆盖。
+  if (pageEntry(wbGet().pageManifest, id)) {
     return setActivePage(id).then(function () {
       var first = document.querySelector('#wb-board-panel .wb-lib-item[data-ann-section], #wb-board-panel .wb-lib-item[data-ann-group]');
       if (first) {
@@ -97,8 +109,8 @@ export function switchPage(id, options) {
     });
   }
   // 页 tab（ADR 0041）：目标 section 在另一个 tab 里 —— 先切过去，板重挂完再滚。
-  var active = wbGet().activeBoard;
-  var sectionTab = active && active.pageId === wbGet().activePageId ? tabIdOfSection(active.fullBoard, id) : '';
+  var active = activeBoardOfPage();
+  var sectionTab = active ? tabIdOfSection(active.fullBoard, id) : '';
   if (sectionTab && sectionTab !== active.tabId) {
     return setActiveTab(sectionTab).then(function () { scrollToGroup(id, options); });
   }
@@ -155,11 +167,6 @@ function defaultPageId() {
   return pages[0].id;
 }
 
-function rememberActivePage(pageId) {
-  if (!pageId) return;
-  savePrefs({ activePageId: pageId });
-}
-
 /** 解析目标页：偏好页存在即用；否则深链 mode 提示（web 已被 parseDeepLink 归一
     html）落到该形态第一页；再回落默认页。按模式的记忆已随 Seg 退役（单一
     activePageId 记忆，boot-prefs 一次性丢弃老 activePageIdByMode/boardMode prefs）。 */
@@ -186,12 +193,23 @@ export function resolveActivePage(preferredId, modeHint) {
    （app/OutlinePopover.jsx，读 fullBoard 再按 tab 切片）。这里只保留切换动作与
    装载后的条目解析。 */
 
-/** 当前页的条目数组（板未装载 / 换页途中 → []）。横条的类型标与条目步进消费。 */
-export function entriesOfActiveBoard() {
+/** 舞台正在用的那块板：板已装载且属于当前页。换页途中 / 未装载 → null ——
+    「找当前板」的判定写一次，条目、tab、浮层、选中都从它出发。 */
+export function activeBoardOfPage() {
   var s = wbGet();
   var active = s.activeBoard;
-  if (!active || active.pageId !== s.activePageId) return [];
-  return boardEntries(active.board);
+  return active && active.pageId === s.activePageId ? active : null;
+}
+
+/** 当前页的条目数组（板未装载 / 换页途中 → []）。横条的类型标与条目步进消费。 */
+export function entriesOfActiveBoard() {
+  var active = activeBoardOfPage();
+  return active ? boardEntries(active.board) : [];
+}
+
+/** 当前选中的条目（板未装载 / 换页途中 → null）。横条与大纲浮层的选中态同源。 */
+export function activeEntryOf() {
+  return resolveEntry(entriesOfActiveBoard(), wbGet().activeEntryId);
 }
 
 /* ---- 页 tab（ADR 0041）：board.json 的 tabs 是纯视图分组 --------------------
@@ -201,21 +219,17 @@ export function entriesOfActiveBoard() {
    大纲浮层）。活动 tab 是页的本机偏好 prefs.activeTabByPage。
    存量 board（只有 sections）没有 tab：这些函数恒返回空 / false，行为同从前。 */
 
-function tabPrefs() {
-  var raw = readPrefs().activeTabByPage;
+/* 按页 map 偏好（prefs.activeTabByPage / activeEntryIdByPage 同形：页 id → 一格）。
+   读 与 写（写回偏好存储）各一条，tab 与条目两族共用。 */
+function pagePrefMap(key) {
+  var raw = readPrefs()[key];
   return raw && typeof raw === 'object' ? raw : {};
 }
 
-function saveTabPref(pageId, tabId) {
-  var all = Object.assign({}, tabPrefs());
-  all[pageId] = tabId;
-  savePrefs({ activeTabByPage: all });
-}
-
-function activeBoardOfPage() {
-  var s = wbGet();
-  var active = s.activeBoard;
-  return active && active.pageId === s.activePageId ? active : null;
+function savePagePrefMap(key, pageId, value) {
+  var all = Object.assign({}, pagePrefMap(key));
+  all[pageId] = value;
+  savePrefs({ [key]: all });
 }
 
 /** 当前页的活动 tab id；存量页 / 板未装载 → ''。 */
@@ -231,11 +245,14 @@ export function tabsOfActiveBoard() {
   return tabs.length >= 2 ? tabs : [];
 }
 
-/** 这屏属于另一个 tab（此刻没挂载）。标注层据此不把它的标注当成“锚点失效”。 */
+/** 这屏属于另一个 tab（此刻没挂载）。标注层据此不把它的标注当成“锚点失效”。
+    文章画布上的 HTML 帧（卡片）也算：它们的标注在那一页自己的账本里，浮层里做。 */
 export function screenOffTab(screenId) {
   var active = activeBoardOfPage();
   if (!active || !screenId) return false;
-  if (isHtmlCardScreen(active, screenId)) return true;
+  if (isArticleBoard(active.board)) {
+    if (isPageOverlayEntry(entryById(boardEntries(active.board), screenId))) return true;
+  }
   var tab = tabIdOfScreen(active.fullBoard || active.board, screenId);
   return !!tab && tab !== active.tabId;
 }
@@ -246,17 +263,16 @@ export function screenOffTab(screenId) {
     返回 Promise<boolean>：切好（或本来就在这个 tab）= true；存量页 / 板未就绪 = false。 */
 export function setActiveTab(tabId, options) {
   options = options || {};
-  var panel = document.getElementById('wb-board-panel');
+  var panel = boardPanel();
   var active = activeBoardOfPage();
   if (!panel || !active) return Promise.resolve(false);
   var id = resolveTabId(active.fullBoard || active.board, tabId);
   if (!id) return Promise.resolve(false);
   if (id === active.tabId) return Promise.resolve(true);
   cancelStageScroll();
-  var draft = annotateApi();
-  if (draft && typeof draft.cancelDraft === 'function') draft.cancelDraft();
+  cancelBoardDraft();
   snapshotPageViewport(active.pageId);
-  if (options.save !== false) saveTabPref(active.pageId, id);
+  if (options.save !== false) savePagePrefMap('activeTabByPage', active.pageId, id);
   wbSet({ focusFrameKey: null, focusSectionId: null, focusAnnN: null });
   return pagesDeps.loadBoard(panel, active.pageId, {
     tabId: id,
@@ -278,21 +294,6 @@ export function revealFrame(screenId) {
   var tab = tabIdOfScreen(active.fullBoard || active.board, screenId);
   if (!tab || tab === active.tabId) return false;
   return setActiveTab(tab);
-}
-
-function entryPrefs() {
-  var raw = readPrefs().activeEntryIdByPage;
-  return raw && typeof raw === 'object' ? raw : {};
-}
-
-function entryPrefFor(pageId) {
-  return entryPrefs()[pageId] || null;
-}
-
-function saveEntryPref(pageId, entryId) {
-  var all = Object.assign({}, entryPrefs());
-  all[pageId] = entryId;
-  savePrefs({ activeEntryIdByPage: all });
 }
 
 /* stage 形态应用到 DOM/缩放：data-page-mode 是 stage 阅读器态的 CSS 钩
@@ -350,7 +351,7 @@ export function setActiveViewport(viewport) {
   viewport = normalizeViewport(viewport);
   var s = wbGet();
   var pageId = s.activePageId;
-  var panel = document.getElementById('wb-board-panel');
+  var panel = boardPanel();
   if (!pageId || !panel) return Promise.resolve();
   if (viewport === s.viewport) return Promise.resolve();
   // 文章画布的页面浮层：视口是这一帧的偏好，卡片宽度跟着变（重装后画布上那张卡片换宽度）。
@@ -379,7 +380,7 @@ export function setActiveViewport(viewport) {
 var phoneScaleRo = null;
 
 function phoneShellEl() {
-  var panel = document.getElementById('wb-board-panel');
+  var panel = boardPanel();
   return panel ? panel.querySelector('.wb-screen:not([data-doc-hidden]) .wb-phone-doc') : null;
 }
 
@@ -498,8 +499,7 @@ export function openPageOverlay(screenId) {
   if (!active || !screenId) return false;
   var entry = entryById(boardEntries(active.board), screenId);
   if (!isPageOverlayEntry(entry)) return false;
-  var ann = annotateApi();
-  if (ann && typeof ann.cancelDraft === 'function') ann.cancelDraft();
+  cancelBoardDraft();
   setActiveEntry(screenId, { save: false });
   return true;
 }
@@ -535,20 +535,12 @@ function syncPageOverlayLayer() {
   }
 }
 
-/** 文章画布上的 HTML 帧（卡片）：画布上的标注客户端不管它的标注（它们在这一页自己的账本里，
-    浮层里做），锚点找不到不算失效。 */
-function isHtmlCardScreen(active, screenId) {
-  if (!active || !isArticleBoard(active.board)) return false;
-  var entry = entryById(boardEntries(active.board), screenId);
-  return isPageOverlayEntry(entry);
-}
-
 export function setActiveEntry(entryId, options) {
   cancelStageScroll();
   options = options || {};
-  var panel = document.getElementById('wb-board-panel');
-  var active = wbGet().activeBoard;
-  if (!panel || !active || active.pageId !== wbGet().activePageId) return;
+  var panel = boardPanel();
+  var active = activeBoardOfPage();
+  if (!panel || !active) return;
   var entries = boardEntries(active.board);
   if (!entries.length) return;
   var entry = resolveEntry(entries, entryId);
@@ -558,7 +550,7 @@ export function setActiveEntry(entryId, options) {
     snapshotPageViewport(active.pageId);
   }
   wbSet({ activeEntryId: entry.id });
-  if (options.save !== false) saveEntryPref(active.pageId, entry.id);
+  if (options.save !== false) savePagePrefMap('activeEntryIdByPage', active.pageId, entry.id);
   var form = entryForm(entry);
   syncEntryViewport(active.board, entry);
   applyStageForm(form);
@@ -583,15 +575,15 @@ export function setActiveEntry(entryId, options) {
    options.save 为真就把它写进记忆，刷新后还是这一篇。 */
 export function syncEntries(options) {
   options = options || {};
-  var active = wbGet().activeBoard;
-  if (!active || active.pageId !== wbGet().activePageId) return;
+  var active = activeBoardOfPage();
+  if (!active) return;
   var entries = boardEntries(active.board);
   if (!entries.length) {
     wbSet({ activeEntryId: null });
     applyPageFormFallback(active.pageId);
     return;
   }
-  var wanted = options.fresh ? null : entryPrefFor(active.pageId);
+  var wanted = options.fresh ? null : pagePrefMap('activeEntryIdByPage')[active.pageId] || null;
   setActiveEntry(wanted || defaultEntryId(entries), { scrollTop: false, save: !!(options.fresh && options.save) });
 }
 
@@ -734,21 +726,18 @@ export function loadProjects() {
 
 export function setActivePage(pageId, options) {
   options = options || {};
-  var panel = document.getElementById('wb-board-panel');
+  var panel = boardPanel();
   if (!panel) return Promise.resolve();
   var same = wbGet().activePageId === pageId;
   if (!same || options.force) cancelStageScroll();
-  var _draftAnn = annotateApi();
-  if (!same && _draftAnn && typeof _draftAnn.cancelDraft === 'function') {
-    _draftAnn.cancelDraft();
-  }
+  if (!same) cancelBoardDraft();
   if (!same && pagesDeps.mountManager.current && pagesDeps.mountManager.current.active && pagesDeps.mountManager.current.pageId === wbGet().activePageId) {
     snapshotPageViewport(wbGet().activePageId);
   }
   // missingPageId 在这里清空：换到任何一个真实页就离开了「页面不存在」状态，
   // url-sync 随之恢复写地址栏（stage.js showMissingPage 有理由）。
   wbSet({ activePageId: pageId, missingPageId: null, focusFrameKey: null, focusAnnN: null });
-  if (options.save !== false) rememberActivePage(pageId);
+  if (options.save !== false && pageId) savePrefs({ activePageId: pageId });
   if (same && !options.force) {
     // Re-clicking the active page must not fight per-page viewport memory.
     if (options.scrollTop === true) scrollStageTo(stage, { top: 0 });

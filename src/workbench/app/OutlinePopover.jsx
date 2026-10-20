@@ -15,7 +15,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { autoUpdate, computePosition, offset, shift } from '@floating-ui/dom';
 import { useWorkbenchStore, wbGet } from './store.js';
-import { closePageOverlay, entriesOfActiveBoard, isPageOverlayOpen, setActiveEntry, setActiveTab } from '../pages.js';
+import { activeEntryOf, closePageOverlay, isPageOverlayOpen, setActiveEntry, setActiveTab } from '../pages.js';
 import {
   flashBoardFrame,
   focusBoardSection,
@@ -29,8 +29,7 @@ import {
   contentsModel,
   entryTag,
   isPageOverlayEntry,
-  outlineSlice,
-  resolveEntry
+  outlineSlice
 } from '../lib/board-entries.js';
 import { tabIdOfScreen } from '../lib/board-tabs.js';
 import { boardRefs } from '../lib/board-refs.js';
@@ -231,7 +230,7 @@ function EntryRow(props) {
 function OutlineContents(props) {
   var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
   var active = useWorkbenchStore(function (s) { return s.activeBoard; });
-  var activeEntryId = useWorkbenchStore(function (s) { return s.activeEntryId; });
+  useWorkbenchStore(function (s) { return s.activeEntryId; }); // 订阅选中变化；取值走 activeEntryOf
   if (!active || active.pageId !== activePageId) return null;
   var full = active.fullBoard || active.board;
   var slice = outlineSlice(full, props.tabId || '');
@@ -239,7 +238,7 @@ function OutlineContents(props) {
   var model = contentsModel(entries);
   var refs = boardRefs(slice.view);
   var hasTree = !!(refs && refs.outline.some(function (sec) { return sec.frames.length > 0; }));
-  var current = resolveEntry(entriesOfActiveBoard(), activeEntryId);
+  var current = activeEntryOf();
   // 页面浮层（文章画布的 HTML 帧）也算在画布上：树照样展开，点了回画布。
   var onCanvas = !!current && (current.kind === 'canvas' || isPageOverlayEntry(current));
   var treeOpen = hasTree && (!slice.showDocs || onCanvas);
