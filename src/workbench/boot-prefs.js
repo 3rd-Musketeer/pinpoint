@@ -142,7 +142,11 @@ setCanvasZoom = function (val, options) {
   // Visual update always; persist is debounced so wheel/pinch does not thrash localStorage.
   // Never pass save:true into makePref — global canvasZoom key is retired.
   _setCanvasZoom(val, { save: false });
-  if (options.save) scheduleZoomSave(val);
+  if (options.save) {
+    pendingZoomSave = boardZoom(val);
+    clearTimeout(zoomSaveT);
+    zoomSaveT = setTimeout(flushZoomSave, 200);
+  }
 };
 
 /** 以视口内一点为不动点缩放（缺省 = 舞台可视中心）。缩放挂在 .wb-library（origin 0 0），
@@ -165,12 +169,6 @@ export function zoomCanvasAt(next, clientX, clientY) {
   // 不动点回写走共享数学（src/shared/canvas-gesture.js，导出页同一公式）。
   stage.scrollLeft = scrollAfterZoom(stage.scrollLeft, mx, originX, ratio);
   stage.scrollTop = scrollAfterZoom(stage.scrollTop, my, originY, ratio);
-}
-
-function scheduleZoomSave(val) {
-  pendingZoomSave = boardZoom(val);
-  clearTimeout(zoomSaveT);
-  zoomSaveT = setTimeout(flushZoomSave, 200);
 }
 
 function flushZoomSave() {

@@ -12,7 +12,7 @@
 // 持久化 prefs.pageSort）；页面重命名 / 复制 / 置顶 / 归档统一走 app/row-menu.jsx
 // 的右键菜单（行宽全部还给标题）。模板页默认不显示（预览设置里有开关），
 // 当前页是模板页时照旧显示，否则选中态没有落点。
-import { emitServerEvent, setServerEventsOnline } from '../server-events.js';
+import { startServerEvents } from '../server-events.js';
 import { registerEmbedPark } from '../embed-park.js';
 import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PageInfo } from './PageInfo.jsx';
@@ -263,44 +263,20 @@ export function Sidebar() {
   var [infoPage, setInfoPage] = useState(null);
   useEffect(function () {
     var timer;
-    var events = null;
-    // 停驻（E2）：嵌入工作台停在文章页时这条 /events 断开（HTTP/1.1 同源只有 6 条，停驻的工作台
-    // 不该占着，server-events.js），恢复时重连并补做：左栏刷新一次；活卡片的标注客户端经
-    // server-events 收到断开 / 重连，按重连补读账本；HTML 卡片的标注数由 html-cards.js 自己补读。
-    // 保存与 outbox 走 POST，不受影响。
-    var parked = false;
-    function refresh() {
-      if (parked) return;
+    function refreshSoon() {
       clearTimeout(timer);
       timer = setTimeout(function () { refreshRegistry().catch(function () {}); }, 150);
     }
-    function connect() {
-      if (events) return;
-      events = new EventSource('/events');
-      // 连接状态与推送也转给画布上活的 HTML 卡片里的标注客户端（server-events.js），它们不各开一条。
-      events.onopen = function () { setServerEventsOnline(true); };
-      events.onerror = function () { if (events && events.readyState !== EventSource.OPEN) setServerEventsOnline(false); };
-      events.addEventListener('annotations', function (ev) {
-        refresh();
-        emitServerEvent('annotations', ev.data);
-        // 同一条推送转给工作台里别的订阅方（html-cards.js：文章画布上 HTML 卡片的标注数），不另开连接。
-        var doc = null;
-        try { doc = JSON.parse(ev.data); } catch (e) { return; }
-        window.dispatchEvent(new CustomEvent('wb:annotations', { detail: doc }));
-      });
-    }
-    function disconnect() {
-      if (!events) return;
-      events.close();
-      events = null;
-      setServerEventsOnline(false);
-    }
-    var releasePark = registerEmbedPark({
-      pause: function () { parked = true; clearTimeout(timer); disconnect(); },
-      resume: function () { parked = false; connect(); refresh(); },
-    });
-    if (!parked) connect();
-    return function () { releasePark(); clearTimeout(timer); disconnect(); };
+    // 连接的开合与停驻（E2）归 server-events（全工作台唯一一条 /events，卡片的
+    // 标注客户端也订阅它，不各开一条）。这里只做两件左栏自己的事：推送来时刷
+    // 计数与时间；同一条推送转成 wb:annotations 给 html-cards.js。
+    var stop = startServerEvents(function (data) {
+      refreshSoon();
+      var doc = null;
+      try { doc = JSON.parse(data); } catch (e) { return; }
+      window.dispatchEvent(new CustomEvent('wb:annotations', { detail: doc }));
+    }, refreshSoon);
+    return function () { stop(); clearTimeout(timer); };
   }, []);
   // 旧偏好 sidebarTab='outline' 时左栏没有这个页签：落到「页面」，挂载后改写成 pages。
   // 平时的点击不写偏好，和删页签之前一样。

@@ -202,10 +202,10 @@ var gutterRaf = 0;
 // 复用的气泡节点：String(n) → {node, html, left, top, height}。html 是
 // bubbleInnerHtml 的产物，相同 = 内容没变，跳过重建与高度重测。
 var gutterNodes = Object.create(null);
-// 事件监听登记：滚动挂文档（capture，任意深度的滚动容器都算），尺寸挂
-// ResizeObserver。只在 gutter 开着时挂；stopGutter 全部解除。
-var gutterScrollDoc = null;      // 挂了 scroll 监听的 iframe Document
-var gutterWrapEl = null;         // 挂了 scroll 监听的舞台 wrap
+// 事件监听登记：滚动挂文档（capture，任意深度的滚动容器都算）与舞台 wrap，
+// 尺寸挂 ResizeObserver。只在 gutter 开着时挂；attach 一律先全拆再挂（两条进入
+// 路：通道启动、文档 iframe 换挂），拆解函数收在一张表里，stopGutter 统一解除。
+var gutterDetach = [];
 var gutterResizeObs = null;
 var gutterObservedFrame = null;  // RO 正在观察的 iframe 元素
 
@@ -357,23 +357,15 @@ function scheduleGutterRender() {
 
 function onGutterSignal() { scheduleGutterRender(); }
 
-/** iframe document 上的 gutter 事件面：滚动 + 晚到资源（load capture、字体
- *  loadingdone）。换 document 时整套挪挂，由 attachGutterListeners / detach
- *  共用，保证两条路径解得一样干净。 */
-function detachDocListeners(doc) {
-  doc.removeEventListener('scroll', onGutterSignal, true);
-  doc.removeEventListener('load', onGutterSignal, true);
-  if (doc.fonts) doc.fonts.removeEventListener('loadingdone', onGutterSignal);
-}
-
-/** gutter 开着期间的事件面：iframe 文档滚动与晚到资源（换 document 时挪挂，
- *  不叠层）、舞台滚动（capture 盖 .wb-stage 平移）、iframe 与舞台的尺寸变化。 */
+/** gutter 开着期间的事件面：iframe 文档滚动与晚到资源（换 document 时整套挪
+ *  挂）、舞台滚动（capture 盖 .wb-stage 平移）、iframe 与舞台的尺寸变化。 */
 function attachGutterListeners(iframeEl) {
   if (!iframeEl) return;
+  gutterDetach.forEach(function (fn) { fn(); });
+  gutterDetach = [];
   var doc = null;
   try { doc = iframeEl.contentDocument; } catch (e) { /* 跨域防御（本设计全同源，不会走到） */ }
-  if (doc && gutterScrollDoc !== doc) {
-    if (gutterScrollDoc) detachDocListeners(gutterScrollDoc);
+  if (doc) {
     doc.addEventListener('scroll', onGutterSignal, { capture: true, passive: true });
     // load 不冒泡，capture 才接得到资源级 load（img / iframe…）；连 document
     // 自己的 load 也会从这里过，多排一次渲染，无妨。字体落定走 loadingdone
@@ -381,19 +373,20 @@ function attachGutterListeners(iframeEl) {
     // 就是落定后的几何，不用再等一拍。
     doc.addEventListener('load', onGutterSignal, true);
     if (doc.fonts) doc.fonts.addEventListener('loadingdone', onGutterSignal);
-    gutterScrollDoc = doc;
+    gutterDetach.push(function () {
+      doc.removeEventListener('scroll', onGutterSignal, true);
+      doc.removeEventListener('load', onGutterSignal, true);
+      if (doc.fonts) doc.fonts.removeEventListener('loadingdone', onGutterSignal);
+    });
   }
   var wrap = gutterStageWrap();
-  if (wrap && gutterWrapEl !== wrap) {
-    if (gutterWrapEl) gutterWrapEl.removeEventListener('scroll', onGutterSignal, true);
+  if (wrap) {
     wrap.addEventListener('scroll', onGutterSignal, { capture: true, passive: true });
-    gutterWrapEl = wrap;
+    gutterDetach.push(function () { wrap.removeEventListener('scroll', onGutterSignal, true); });
   }
   if (typeof ResizeObserver !== 'function') return;
-  if (!gutterResizeObs) {
-    gutterResizeObs = new ResizeObserver(onGutterSignal);
-    if (wrap) gutterResizeObs.observe(wrap);
-  }
+  gutterResizeObs = gutterResizeObs || new ResizeObserver(onGutterSignal);
+  if (wrap) gutterResizeObs.observe(wrap); // 重复 observe 同一节点是 no-op
   if (gutterObservedFrame !== iframeEl) {
     if (gutterObservedFrame) gutterResizeObs.unobserve(gutterObservedFrame);
     gutterResizeObs.observe(iframeEl);
@@ -408,14 +401,8 @@ function attachGutterListeners(iframeEl) {
  * 「无标注也满帧率空转」就是这么被喂起来的）。 */
 export function stopGutter() {
   if (gutterRaf) { cancelAnimationFrame(gutterRaf); gutterRaf = 0; }
-  if (gutterScrollDoc) {
-    detachDocListeners(gutterScrollDoc);
-    gutterScrollDoc = null;
-  }
-  if (gutterWrapEl) {
-    gutterWrapEl.removeEventListener('scroll', onGutterSignal, true);
-    gutterWrapEl = null;
-  }
+  gutterDetach.forEach(function (fn) { fn(); });
+  gutterDetach = [];
   if (gutterResizeObs) { gutterResizeObs.disconnect(); gutterResizeObs = null; }
   gutterObservedFrame = null;
   var wrap = gutterStageWrap();

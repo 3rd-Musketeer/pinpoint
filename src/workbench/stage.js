@@ -69,6 +69,7 @@ import {
   loadPageManifest,
   loadProjects,
   resolveActivePage,
+  refreshRegistry,
   retryPageManifest,
   revealFrame,
   screenOffTab,
@@ -854,17 +855,15 @@ if (import.meta.hot) {
   // 所以清单也重拉一次（只刷左栏，不重摆当前板：板的变化另有 preview:update）。
   import.meta.hot.on('projects:update', function () {
     loadProjects();
-    queryClient.invalidateQueries({ queryKey: ['registry-sites'] });
-    loadPageManifest();
+    refreshRegistry();
   });
   // POST /registry/reload（pinpoint add 后由 CLI 触发）：失效 registry-sites
   // 查询并重拉页面清单，新登记的 dir 条目不用手动刷新就出现在 Pages；
   // 当前板随后重摆（条目可能改了路径或 id）。
   import.meta.hot.on('registry:update', function () {
-    queryClient.invalidateQueries({ queryKey: ['registry-sites'] });
     // project 条目增删也走这条（pinpoint add --project / remove → POST /registry/reload）。
     loadProjects();
-    loadPageManifest().then(function () {
+    refreshRegistry().then(function () {
       var missing = wbGet().missingPageId;
       if (!missing) {
         reloadActiveBoard();

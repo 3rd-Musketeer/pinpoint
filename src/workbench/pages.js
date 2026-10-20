@@ -155,21 +155,10 @@ export function manifestPages() {
   return manifest.pages;
 }
 
-function defaultPageId() {
-  var pages = manifestPages();
-  if (!pages.length) return '';
-  var manifest = wbGet().pageManifest;
-  if (manifest && manifest.defaultPage) {
-    for (var i = 0; i < pages.length; i++) {
-      if (pages[i].id === manifest.defaultPage) return pages[i].id;
-    }
-  }
-  return pages[0].id;
-}
-
 /** 解析目标页：偏好页存在即用；否则深链 mode 提示（web 已被 parseDeepLink 归一
-    html）落到该形态第一页；再回落默认页。按模式的记忆已随 Seg 退役（单一
-    activePageId 记忆，boot-prefs 一次性丢弃老 activePageIdByMode/boardMode prefs）。 */
+    html）落到该形态第一页；再回落默认页（manifest.defaultPage，没有就第一页）。
+    按模式的记忆已随 Seg 退役（单一 activePageId 记忆，boot-prefs 一次性丢弃老
+    activePageIdByMode/boardMode prefs）。 */
 export function resolveActivePage(preferredId, modeHint) {
   var pages = manifestPages();
   var ids = {};
@@ -183,7 +172,13 @@ export function resolveActivePage(preferredId, modeHint) {
       if (modeForPage(wbGet().pageManifest, pages[i].id) === modeHint) return pages[i].id;
     }
   }
-  return defaultPageId();
+  if (!pages.length) return '';
+  if (manifest && manifest.defaultPage) {
+    for (var j = 0; j < pages.length; j++) {
+      if (pages[j].id === manifest.defaultPage) return pages[j].id;
+    }
+  }
+  return pages[0].id;
 }
 
 /* ---- 条目（2026-08-16f 阶段 6）：一个 board 的可选单元 --------------------
@@ -318,15 +313,11 @@ function applyStageForm(form) {
    （screen-load 按视口决定 doc 屏套阅读器壳还是手机屏），选中条目由
    prefs.activeEntryIdByPage 记忆带回来。 */
 
-/** 当前页的视口偏好（板装载前就要知道，所以按 pageId 读，不看 store）。 */
-function viewportOfPage(pageId) {
-  return viewportForPage(readPrefs(), pageId);
-}
-
 /** 板装载入口（stage.js loadBoard）在构建 HTML 之前调：把页的视口灌进 store，
-    activeBoardMode() / Strip / applyStageForm 随后读到的就是这一页的值。 */
+    activeBoardMode() / Strip / applyStageForm 随后读到的就是这一页的值（视口是
+    页的偏好，板装载前就要知道，所以按 pageId 读 prefs、不看 store）。 */
 export function applyPageViewport(pageId) {
-  var viewport = viewportOfPage(pageId);
+  var viewport = viewportForPage(readPrefs(), pageId);
   wbSet({ viewport: viewport });
   return viewport;
 }
@@ -603,8 +594,7 @@ export function showPageManifestError(error) {
 export function retryPageManifest() {
   wbSet({ pageManifestError: null });
   queryClient.invalidateQueries({ queryKey: ['page-manifest'] });
-  queryClient.invalidateQueries({ queryKey: ['registry-sites'] });
-  return loadPageManifest().catch(function (error) { showPageManifestError(error); });
+  return refreshRegistry().catch(function (error) { showPageManifestError(error); });
 }
 
 /** Registry entries surface as workbench pages, served from /sites/<id>/.

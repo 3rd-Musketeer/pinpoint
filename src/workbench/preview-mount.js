@@ -61,20 +61,11 @@ function resolvePreviewRoot(scriptEl) {
   return screenRootFrom(scriptEl);
 }
 
-function previewScriptLabel(el) {
-  var screen = el && el.closest && el.closest('[data-screen]');
-  return (screen && screen.getAttribute('data-screen')) || 'preview';
-}
-
 // P2 收尾说明：这里 bust 的是浏览器动态 import() 的模块缓存，不是 fetch 缓存
 // —— 不归 TanStack Query 管。每次挂载（session.generation 递增）都要拿到干净的
 // 模块实例（sidecar 可能有模块级状态），HMR 改文件后也必须重新 import；
 // 不能用 query 的 dataUpdatedAt 当 token —— 缓存回填的重挂载 dataUpdatedAt 不变，
 // 模块级状态会跨挂载泄漏。所以保留 generation 作 token，仅正名。
-function moduleBustUrl(url, generation) {
-  var sep = url.indexOf('?') >= 0 ? '&' : '?';
-  return url + sep + 'mount=' + generation;
-}
 
 /* frame 内资源没进来时的行内提示（2026-09-04，BACKLOG「改 registry id 后
    /sites/<旧 id>/ 资源静默 404」候选 ③）。旧行为：CSS 的 @import 404 无任何反馈，
@@ -184,7 +175,7 @@ function importPreviewModule(url, root, label, session, declared) {
   // declared = 作者在片段里显式写了 src：那条 url 打不开是真故障，在 frame 上
   // 显式报。约定式 sidecar（<screenId>.js，data-preview-mount 隐式探的那条）
   // 本来就允许不存在 —— 每个 doc 屏都会探一次，报出来全是噪音。
-  return import(/* @vite-ignore */ moduleBustUrl(url, session.generation))
+  return import(/* @vite-ignore */ url + (url.indexOf('?') >= 0 ? '&' : '?') + 'mount=' + session.generation)
     .catch(function (err) {
       console.error('[preview-script] ' + label + ' ← ' + url, err);
       if (declared) noteAssetFailure(root, url);
@@ -203,14 +194,14 @@ function runOnePreviewScript(el, pageId, session) {
   el.dataset.previewBound = '1';
   var root = resolvePreviewRoot(el);
   if (!root) return Promise.resolve();
-  var label = previewScriptLabel(el);
+  var screen0 = el.closest && el.closest('[data-screen]');
+  var label = (screen0 && screen0.getAttribute('data-screen')) || 'preview';
   var srcAttr = el.getAttribute('src') || el.getAttribute('data-preview-src');
   var body = (el.textContent || '').trim();
   var isModule = (el.getAttribute('type') || '').toLowerCase() === 'module';
 
   if (srcAttr) {
-    var screen = el.closest('[data-screen]');
-    var screenId = (screen && screen.getAttribute('data-screen')) || label;
+    var screenId = (screen0 && screen0.getAttribute('data-screen')) || label;
     return importPreviewModule(resolveSidecarUrl(pageId, screenId, srcAttr), root, label, session, true);
   }
 

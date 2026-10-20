@@ -51,6 +51,15 @@ function docFrameHtml(url, title) {
     ' title="' + escHtml(title || url) + '" loading="lazy"></iframe>';
 }
 
+/** 图注行（引用号 + 屏名）。HTML 卡片帧多「全页」钮与标注数两枚行尾元素。 */
+function screenCapHtml(frameRef, sc, extra) {
+  return '<div class="wb-screen-cap">' +
+    (frameRef ? '<span class="wb-cap-ref">' + escHtml(frameRef) + '</span>' : '') +
+    '<span class="wb-cap-title" title="' + escHtml(sc.title || '') + '">' + escHtml(sc.title || '') + '</span>' +
+    (extra || '') +
+    '</div>';
+}
+
 /** 一个 doc 屏的文档地址（iframe 的 src）：带 src 的用它，否则是页目录下的 <id>.html。 */
 function docScreenUrl(pageId, screen) {
   var sc = typeof screen === 'string' ? { id: screen } : screen;
@@ -251,10 +260,7 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
       var screenCls = screenClassForShell(pageId, sc.shell, viewport);
       var frameRef = refs.byFrame[sec.id + '\0' + sc.id] || '';
       // title 属性 = 截断兜底（2026-08-17 caption 两行 clamp）的全文出口
-      var capHtml = '<div class="wb-screen-cap">' +
-        (frameRef ? '<span class="wb-cap-ref">' + escHtml(frameRef) + '</span>' : '') +
-        '<span class="wb-cap-title" title="' + escHtml(sc.title || '') + '">' + escHtml(sc.title || '') + '</span>' +
-        '</div>';
+      var capHtml = screenCapHtml(frameRef, sc);
       var dimHtml = isPhoneFrame(pageId, sc.shell)
         ? '<div class="wb-screen-dim">' + IOS_DEVICE_DIM + '</div>'
         : '';
@@ -293,12 +299,9 @@ function htmlFrameScreensHtml(pageId, sec, sc, col, layout, refs, viewport) {
   var title = sc.title || sc.id;
   var frameRef = refs.byFrame[sec.id + '\0' + sc.id] || '';
   var colAttr = layout === 'row' ? ';--wb-col:' + (col + 1) : '';
-  var capHtml = '<div class="wb-screen-cap">' +
-    (frameRef ? '<span class="wb-cap-ref">' + escHtml(frameRef) + '</span>' : '') +
-    '<span class="wb-cap-title" title="' + escHtml(sc.title || '') + '">' + escHtml(sc.title || '') + '</span>' +
+  var capHtml = screenCapHtml(frameRef, sc,
     '<button type="button" class="wb-cap-open" data-html-card-open data-ann-ui title="打开完整页面">全页</button>' +
-    '<span class="wb-cap-count" data-html-card-count hidden></span>' +
-    '</div>';
+    '<span class="wb-cap-count" data-html-card-count hidden></span>');
   var size = htmlCardSize(viewport);
   var card = '<div class="wb-screen wb-screen--html-card" data-screen="' + escHtml(sc.id) + '" data-html-card' +
     ' style="--wb-phone-w:' + size.width + 'px' + colAttr + '">' +
