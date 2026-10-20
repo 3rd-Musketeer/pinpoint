@@ -210,8 +210,9 @@ export function activeEntryOf() {
    存量 board（只有 sections）没有 tab：这些函数恒返回空 / false，行为同从前。 */
 
 /* 按页 map 偏好（prefs.activeTabByPage / activeEntryIdByPage 同形：页 id → 一格）。
-   读 与 写（写回偏好存储）各一条，tab 与条目两族共用。 */
-function pagePrefMap(key) {
+   读 与 写（写回偏好存储）各一条，tab 与条目两族共用；stage.js 装板读 tab 偏好
+   也走这里（带 typeof 守卫，非对象的旧偏好不炸）。 */
+export function pagePrefMap(key) {
   var raw = readPrefs()[key];
   return raw && typeof raw === 'object' ? raw : {};
 }
