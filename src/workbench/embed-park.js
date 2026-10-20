@@ -69,7 +69,10 @@ export function reportEmbedPark(whenSettled, report) {
       return Promise.resolve();
     }
     pauseEmbed();
-    return Promise.resolve().then(whenSettled).then(function () {
+    return Promise.resolve().then(whenSettled).catch(function (error) {
+      // 暂停已经生效；落定观察失败不能让父页面永远等不到回执。
+      console.warn('[pinpoint] 停驻落定观察失败，继续处理回执', error);
+    }).then(function () {
       if (token === request && embedParked()) report(true);
     });
   };

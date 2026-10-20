@@ -3,6 +3,41 @@ import assert from 'node:assert/strict';
 
 import { embedParked, pauseEmbed, registerEmbedPark, reportEmbedPark, resetEmbedPark, resumeEmbed } from './embed-park.js';
 
+for (const synchronous of [false, true]) {
+  test(`停驻落定观察${synchronous ? '抛错' : 'reject'}时诊断一次并照常回执`, async (t) => {
+    resetEmbedPark();
+    const error = new Error('boot 崩了');
+    const warnings = t.mock.method(console, 'warn', () => {});
+    const reports = [];
+    const report = reportEmbedPark(() => {
+      if (synchronous) throw error;
+      return Promise.reject(error);
+    }, (paused) => reports.push(paused));
+    await assert.doesNotReject(report(true));
+    assert.equal(embedParked(), true);
+    assert.deepEqual(reports, [true]);
+    assert.equal(warnings.mock.calls.length, 1);
+    assert.match(warnings.mock.calls[0].arguments[0], /停驻.*失败/);
+    assert.equal(warnings.mock.calls[0].arguments[1], error);
+  });
+}
+
+test('恢复后迟到的落定reject仍被处理，但不补发旧停驻回执', async (t) => {
+  resetEmbedPark();
+  const warnings = t.mock.method(console, 'warn', () => {});
+  let reject;
+  const settling = new Promise((resolve, fail) => { reject = fail; });
+  const reports = [];
+  const report = reportEmbedPark(() => settling, (paused) => reports.push(paused));
+  const pending = report(true);
+  await report(false);
+  reject(new Error('迟到的 boot 失败'));
+  await assert.doesNotReject(pending);
+  assert.equal(embedParked(), false);
+  assert.deepEqual(reports, [false]);
+  assert.equal(warnings.mock.calls.length, 1);
+});
+
 test('停驻立即暂停，但回执要等首装落定；恢复撤销在途的停驻回执', async () => {
   resetEmbedPark();
   let settle;
