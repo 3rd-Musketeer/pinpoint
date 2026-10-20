@@ -1189,6 +1189,32 @@ test('run: 未知命令退 2 并指向命令一览；无参数打命令一览', 
   assert.match(rec.out.at(-1), /用法/);
 });
 
+test('run: --json 写在命令前面与写在后面是同一次调用', async (t) => {
+  const { io, rec } = lifecycleIo(t);
+  // 信封的 command 记命令，不是 flag；未知命令照样退 2。
+  assert.equal(await run(['--json', 'reload'], io), 2);
+  const envelope = JSON.parse(rec.out.at(-1));
+  assert.equal(envelope.command, 'reload');
+  assert.equal(envelope.exit, 2);
+  // 原生命令（list）不管 flag 在哪边，stdout 顶层都是它自己的 JSON 文档。
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-cli-json-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const registry = path.join(dir, 'registry.json');
+  fs.writeFileSync(registry, JSON.stringify({ version: 1, entries: [] }));
+  const env = { PINPOINT_DATA_DIR: path.join(dir, 'data'), PINPOINT_ORIGIN: 'http://127.0.0.1:1' };
+  const before = recorder();
+  assert.equal(await run(['list', '--json', '--registry', registry], { ...before.io, env }), 0, before.err.join('\n'));
+  const after = recorder();
+  assert.equal(await run(['--json', 'list', '--registry', registry], { ...after.io, env }), 0, after.err.join('\n'));
+  assert.deepEqual(JSON.parse(after.out.join('\n')), JSON.parse(before.out.join('\n')));
+  // help 经 dispatch 也能带 --json：帮助文本进信封 output。
+  const helpRec = recorder();
+  assert.equal(await run(['--json', 'help', 'mv'], helpRec.io), 0);
+  const helpEnvelope = JSON.parse(helpRec.out.join('\n'));
+  assert.equal(helpEnvelope.exit, 0);
+  assert.ok(helpEnvelope.output.join('\n').length > 0);
+});
+
 /* ---- pp2：build / render ---- */
 
 test('parseArgs: build / render 的选项与位置参数', () => {

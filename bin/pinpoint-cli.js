@@ -150,7 +150,11 @@ function jsonEnvelope(command, code, output, stderr) {
 
 async function runAsJson(argv, io) {
   const { out, err } = ioOf(io);
-  const command = argv[0];
+  // 命令与原生命令判定都看剥掉 --json 之后的 argv：--json 是全局开关，写在前
+  // 面（ppnt --json list）和写在后面是同一次调用，信封的 command 字段与原生命
+  // 令的顶层文档形状不该随 flag 位置变。
+  const stripped = argv.filter((arg) => arg !== '--json');
+  const command = stripped[0];
   const native = NATIVE_JSON.has(command);
   const output = [];
   const stderr = [];
@@ -162,7 +166,9 @@ async function runAsJson(argv, io) {
       err(line);
     },
   };
-  const code = await dispatch(native ? argv : argv.filter((arg) => arg !== '--json'), captured);
+  // dispatch 收「命令在头」的 argv；原生命令要自己看到 --json 才出原生 JSON，
+  // 所以剥掉的前置 flag 补回到尾部 —— 位置从此不挑（parseArgs 对 flag 顺序不敏感）。
+  const code = await dispatch(native ? [...stripped, '--json'] : stripped, captured);
   if (native && output.length) {
     try {
       JSON.parse(output.join('\n'));
@@ -176,23 +182,23 @@ async function runAsJson(argv, io) {
 
 export async function run(argv, io = {}) {
   const { out } = ioOf(io);
-  if (argv.length === 0 || argv[0] === '-h' || argv[0] === '--help') {
+  const stripped = argv.filter((arg) => arg !== '--json');
+  if (argv.length === 0 || stripped[0] === '-h' || stripped[0] === '--help') {
     out(USAGE);
     return 0;
   }
-  // ppnt help <命令> = ppnt <命令> --help
-  if (argv[0] === 'help') {
-    out(helpFor(argv[1]));
-    return 0;
-  }
   const wantsHelp = argv.includes('-h') || argv.includes('--help');
-  if (argv.includes('--json') && !wantsHelp && !SELF_JSON.has(argv[0])) return runAsJson(argv, io);
-  return dispatch(argv, io);
+  if (argv.includes('--json') && !wantsHelp && !SELF_JSON.has(stripped[0])) return runAsJson(argv, io);
+  // dev 自己处理 --json，不经 runAsJson：这里同样把命令归一到头（ppnt --json dev …）。
+  return dispatch(stripped.length === argv.length ? argv : [...stripped, '--json'], io);
 }
 
 function dispatch(argv, io) {
-  const { err } = ioOf(io);
+  const { err, out } = ioOf(io);
   switch (argv[0]) {
+    case 'help':
+      out(helpFor(argv[1]));
+      return 0;
     case 'logo': return import('./cli/logo.js').then(({ runLogo }) => runLogo(argv, io));
     case 'list': return runList(argv, io);
     case 'show': return runShow(argv, io);
