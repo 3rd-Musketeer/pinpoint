@@ -23,6 +23,7 @@
 import { ENTRY_ID_PATTERN } from '../../shared/registry-ids.js';
 import { isReservedSegment, LEGACY_CONCEPTS_SEGMENT, RESERVED_ARTICLE_IDS, WIKI_SEGMENT } from '../../shared/project-ids.js';
 import { projectEntry } from './registry.js';
+import { splitUrlQuery } from './req-url.js';
 
 // 保留首段的表在 src/shared/project-ids.js（登记校验与这里的路由用同一份）。
 export { isReservedSegment, RESERVED_SEGMENT_PATTERNS, RESERVED_TOP_SEGMENTS } from '../../shared/project-ids.js';
@@ -32,12 +33,6 @@ export const ASTRO_DEV_BASE = '/_astro/';
 /** `id` 是不是登记过的 project（registry.projects，loadRegistry 的结果与 live store 同形）。 */
 export function isProjectId(registry, id) {
   return typeof id === 'string' && id !== '' && projectEntry(registry, id) != null;
-}
-
-function splitUrl(url) {
-  const raw = typeof url === 'string' && url ? url : '/';
-  const at = raw.indexOf('?');
-  return at < 0 ? { pathname: raw, search: '' } : { pathname: raw.slice(0, at), search: raw.slice(at) };
 }
 
 /** /_astro 后面的路径：连续斜杠压成一道（见文件头）。 */
@@ -78,7 +73,7 @@ export function articleIdOfPath(pathname) {
  * upstream = 发给 Astro 开发服务器的路径 + query。
  */
 export function routeArticleRequest(url, isProject) {
-  const { pathname, search } = splitUrl(url);
+  const { pathname, search } = splitUrlQuery(url);
   if (pathname === '/' && (search === '' || search === '?')) {
     return { kind: 'home', project: null, article: null, upstream: ASTRO_DEV_BASE };
   }
@@ -111,7 +106,7 @@ export function routeArticleRequest(url, isProject) {
  * pinpoint 自己的 HMR 在 / 上，由 vite 自己的 upgrade 监听处理。
  */
 export function routeArticleUpgrade(url) {
-  const { pathname, search } = splitUrl(url);
+  const { pathname, search } = splitUrlQuery(url);
   if (pathname === '/_astro' || pathname.startsWith('/_astro/')) {
     return { kind: 'internal', upstream: astroInternalUpstream(pathname) + search };
   }

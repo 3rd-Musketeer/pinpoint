@@ -113,7 +113,6 @@ export {
   pageListRows,
   projectListRows,
   formatProjectRow,
-  formatProjectDetail,
   runList,
 } from './cli/list.js';
 

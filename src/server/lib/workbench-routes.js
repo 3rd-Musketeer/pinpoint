@@ -11,18 +11,13 @@
  * 返回 null，或 { action: 'redirect', location }，或 { action: 'rewrite', url }。
  */
 import { WORKBENCH_PATH } from '../../shared/workbench-url.js';
+import { splitUrlQuery } from './req-url.js';
 
 const WORKBENCH_SHELL = '/index.html';
 
-function splitUrl(url) {
-  const raw = typeof url === 'string' && url ? url : '/';
-  const at = raw.indexOf('?');
-  return at < 0 ? { pathname: raw, search: '' } : { pathname: raw.slice(0, at), search: raw.slice(at) };
-}
-
 export function routeWorkbenchRequest(method, url) {
   if (method !== 'GET' && method !== 'HEAD') return null;
-  const { pathname, search } = splitUrl(url);
+  const { pathname, search } = splitUrlQuery(url);
   // `/?`（空查询串）当作不带参数。
   const query = search === '?' ? '' : search;
   if (pathname === WORKBENCH_PATH || pathname === `${WORKBENCH_PATH}index.html`) {

@@ -188,3 +188,15 @@ export function sendMethodNotAllowed(res, allow = 'GET, HEAD') {
   res.setHeader('Allow', allow);
   sendJson(res, 405, { error: 'method_not_allowed', message: 'method not allowed' });
 }
+
+/** 这是不是一次读（sites-api 家规：只有 GET / HEAD 出内容）。 */
+export function isReadMethod(req) {
+  return req.method === 'GET' || req.method === 'HEAD';
+}
+
+/** 非 GET / HEAD 时答 405 返回 true；读请求返回 false（调用方继续出自己的内容）。 */
+export function rejectWrite(req, res, allow = 'GET, HEAD') {
+  if (isReadMethod(req)) return false;
+  sendMethodNotAllowed(res, allow);
+  return true;
+}

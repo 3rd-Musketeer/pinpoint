@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { annotateInjection, annotateSnippet, injectAnnotateClient } from './lib/annotate-snippet.js';
 import { articleHtmlFrameFile, frameSrcFromUrlPath } from './lib/article-board.js';
 import { resolveBoardSource } from './lib/board-source.js';
-import { sendCacheable, sendFile, sendJson, sendMethodNotAllowed } from './lib/http-respond.js';
+import { rejectWrite, sendCacheable, sendFile, sendJson } from './lib/http-respond.js';
 import { resolveContainedFile, resolveServableFile } from './lib/servable-file.js';
 import {
   boardScreenIds,
@@ -99,10 +99,7 @@ export function createSitesHandler(options = {}) {
    * `@root/<路径>` 下（docs/projects.md“HTML 帧”）。三处出文件都经 resolveServableFile。
    */
   async function serveArticlePage(req, res, source, rel, rawRel) {
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      sendMethodNotAllowed(res);
-      return true;
-    }
+    if (rejectWrite(req, res)) return true;
     const target = source.target;
     const board = source.readBoard();
     if (!board) {
@@ -190,10 +187,7 @@ export function createSitesHandler(options = {}) {
       return true;
     }
 
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      sendMethodNotAllowed(res);
-      return true;
-    }
+    if (rejectWrite(req, res)) return true;
 
     // pp2（2026-09-22 切片 1）：dir 条目的「屏」从 dist 出 —— board.json 里的
     // screenId 对应的 <id>.html 读 <dataRoot>/dist/<entry>/（懒编译兜底）；

@@ -6,7 +6,6 @@ import { loadPageContext } from '../../src/server/lib/ann-query.js';
 import { listPageIds, readDistScreen } from '../../src/server/lib/page-compiler.js';
 import { loadRegistry } from '../../src/server/lib/registry.js';
 import { listProjects } from '../../src/server/lib/projects.js';
-import { formatProjectError } from '../../src/shared/project-errors.js';
 import { readBucketLedgers } from '../../src/server/lib/orphans.js';
 import { buildPageList, formatPageRow, matchPages, scorePage, suggestPages } from '../../src/server/lib/page-list.js';
 import { screenOf } from '../../src/workbench/lib/board-refs.js';
@@ -218,29 +217,6 @@ export function formatProjectRow(project) {
   const lines = [[project.id, project.title, 'project', countLabel(project)].filter(Boolean).join('  ·  ')];
   lines.push(`    ${project.root}`);
   for (const article of project.articles) lines.push(`    ${project.id}/${article.id}  ·  ${article.title}`);
-  return lines;
-}
-
-/** `list <project>`：文章、wiki 词条与布局错误全列出来。 */
-export function formatProjectDetail(project) {
-  const lines = [`# ${project.id} · ${project.title}`, `根目录：${project.root}`, `内容：${project.dir}`, ''];
-  lines.push(`文章（${project.articles.length}）`);
-  if (!project.articles.length) lines.push('  （无）');
-  for (const article of project.articles) {
-    lines.push(`  ${article.id}  ·  ${article.title}${article.summary ? `  ·  ${article.summary}` : ''}`);
-    lines.push(`    ${article.file}`);
-    // 页 id：/workbench/?page= 和标注桶用它；CLI 输出打斜杠形。
-    if (article.pageId) lines.push(`    画布 ${article.pageId}`);
-  }
-  lines.push('', `wiki（${project.concepts.length}）`);
-  if (!project.concepts.length) lines.push('  （无）');
-  for (const concept of project.concepts) {
-    const bits = [concept.name, concept.status, concept.boundary].filter(Boolean);
-    lines.push(`  ${bits.join('  ·  ')}`);
-    lines.push(`    ${concept.file}`);
-  }
-  lines.push('', project.errors.length ? `布局错误（${project.errors.length}）` : '布局错误：无');
-  for (const problem of project.errors) lines.push(`  ✗ ${formatProjectError(problem)}`);
   return lines;
 }
 

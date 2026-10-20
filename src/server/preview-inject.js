@@ -18,6 +18,7 @@ import { annotateInjection } from './lib/annotate-snippet.js';
 import { boardScreenIds } from './lib/page-compiler.js';
 import { sendCacheable } from './lib/http-respond.js';
 import { resolveContainedFile } from './lib/servable-file.js';
+import { parseReqUrl } from './lib/req-url.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONTENT_ROOT = path.resolve(__dirname, '..', '..', 'content');
@@ -80,8 +81,7 @@ export default function previewInject(options = {}) {
     name: 'preview-inject',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        const parts = (req.url || '').split('?');
-        if (handle(req, res, parts[0])) return;
+        if (handle(req, res, parseReqUrl(req).pathname)) return;
         next();
       });
     },

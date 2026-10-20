@@ -7,7 +7,7 @@
  * errors 里，不是 HTTP 错误。每次请求都重读盘，文章增删不用 reload。
  */
 import { articleCanvas } from './lib/article-board.js';
-import { sendJson, sendMethodNotAllowed } from './lib/http-respond.js';
+import { rejectWrite, sendJson } from './lib/http-respond.js';
 import { findProject, listProjects } from './lib/projects.js';
 import { parseReqUrl } from './lib/req-url.js';
 
@@ -18,10 +18,7 @@ export function createProjectsHandler({ registry }) {
   return (req, res, next) => {
     const urlPath = parseReqUrl(req).pathname;
     if (urlPath !== '/api/projects' && !urlPath.startsWith('/api/projects/')) return next();
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      sendMethodNotAllowed(res);
-      return;
-    }
+    if (rejectWrite(req, res)) return;
     if (urlPath === '/api/projects' || urlPath === '/api/projects/') {
       sendFreshJson(res, 200, listProjects(registry));
       return;

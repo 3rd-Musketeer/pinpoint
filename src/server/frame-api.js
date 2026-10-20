@@ -18,7 +18,7 @@ import { parseReqUrl } from './lib/req-url.js';
  */
 import { FrameDocError, figurePageHtml, framePageHtml, resolveFigureTarget, resolveFrameTarget } from './lib/frame-doc.js';
 import { annotateInjection } from './lib/annotate-snippet.js';
-import { readBody, sendCacheable, sendJson, sendMethodNotAllowed } from './lib/http-respond.js';
+import { readBody, rejectWrite, sendCacheable, sendJson, sendMethodNotAllowed } from './lib/http-respond.js';
 import { defaultDistRoot, loadFigure, recordFigureRuntimeError } from './lib/page-compiler.js';
 
 const EMBEDS = new Set(['card', 'figure']);
@@ -100,10 +100,7 @@ export default function frameApi(options = {}) {
           return;
         }
         if (urlPath !== '/api/frame') return next();
-        if (req.method !== 'GET' && req.method !== 'HEAD') {
-          sendMethodNotAllowed(res);
-          return;
-        }
+        if (rejectWrite(req, res)) return;
         const query = parseReqUrl(req).query;
         const pageId = query.get('page') || '';
         const screenId = query.get('screen') || '';

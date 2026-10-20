@@ -25,6 +25,7 @@ import path from 'node:path';
 import { annotateInjection } from './lib/annotate-snippet.js';
 import { annotateClientSrc, injectAnnotateSrc } from './lib/annotate-bundle.js';
 import { etagMatches } from './lib/etag.js';
+import { parseReqUrl } from './lib/req-url.js';
 import { resolveContainedFile, resolveContainedPath } from './lib/servable-file.js';
 import {
   boardScreenIds,
@@ -119,8 +120,7 @@ export default function contentRoutes() {
       };
       server.middlewares.use(async (req, res, next) => {
         if (!req.url) return next();
-        const parts = req.url.split('?');
-        const urlPath = parts[0];
+        const urlPath = parseReqUrl(req).pathname;
         const normalized = normalizedPathname(urlPath);
         const mapped = PREFIXES.find(([from]) => urlPath.startsWith(from));
         if (mapped && !normalized?.startsWith(mapped[0])) {

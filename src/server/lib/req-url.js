@@ -4,10 +4,16 @@
  * `new URL(req.url, 'http://x.local')` 与 `split('?')[0]`。这里一把尺子：
  *   parseReqUrl(req) → { pathname, query: URLSearchParams }
  * pathname 恒以 / 开头且不带 query；query 直接 .get()。
+ * splitUrlQuery(url) 是同一把尺子的字符串版（拿 url 字符串、要保留 search
+ * 原样的改写类路由用；workbench-routes 与 article-routes 此前各抄一份）。
  */
 export function parseReqUrl(req) {
-  const raw = req && req.url ? String(req.url) : '/';
+  const { pathname, search } = splitUrlQuery(req && req.url ? String(req.url) : null);
+  return { pathname, query: new URLSearchParams(search.startsWith('?') ? search.slice(1) : search) };
+}
+
+export function splitUrlQuery(url) {
+  const raw = typeof url === 'string' && url ? url : '/';
   const at = raw.indexOf('?');
-  const pathname = at < 0 ? raw : raw.slice(0, at);
-  return { pathname, query: new URLSearchParams(at < 0 ? '' : raw.slice(at + 1)) };
+  return at < 0 ? { pathname: raw, search: '' } : { pathname: raw.slice(0, at), search: raw.slice(at) };
 }
