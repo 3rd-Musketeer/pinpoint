@@ -24,17 +24,26 @@ const MIME = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
+  '.avif': 'image/avif',
   '.gif': 'image/gif',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
+  '.otf': 'font/otf',
+  '.ttf': 'font/ttf',
+  '.mp3': 'audio/mpeg',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
   '.txt': 'text/plain',
   '.md': 'text/markdown',
 };
 
-/** 扩展名 → Content-Type 主类型；不认得的扩展名给 fallback。 */
-export function mimeFor(name, fallback = 'application/octet-stream') {
+/** 扩展名 → Content-Type 主类型；不认得的扩展名给 fallback。header（响应声明的
+    content-type）给了就优先——离线导出抓回的远程资源以服务器说的为准。 */
+export function mimeFor(name, fallback = 'application/octet-stream', header = '') {
+  const declared = String(header || '').split(';')[0].trim().toLowerCase();
+  if (declared) return declared;
   return MIME[path.extname(String(name)).toLowerCase()] || fallback;
 }
 

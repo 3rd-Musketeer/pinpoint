@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { escHtml } from '../../shared/esc-html.js';
+import { mimeFor } from './http-respond.js';
 const MAX_RESOURCE_BYTES = 25 * 1024 * 1024;
 const RESOURCE_ATTRS = new Set(['src', 'poster']);
 
@@ -36,19 +37,6 @@ function splitSuffix(ref) {
   return hashAt < 0
     ? { resource: text, suffix: '' }
     : { resource: text.slice(0, hashAt), suffix: text.slice(hashAt) };
-}
-
-function mimeFor(file, header = '') {
-  const declared = String(header || '').split(';')[0].trim().toLowerCase();
-  if (declared) return declared;
-  const ext = path.extname(String(file || '')).toLowerCase();
-  return ({
-    '.avif': 'image/avif', '.css': 'text/css', '.gif': 'image/gif', '.html': 'text/html',
-    '.ico': 'image/x-icon', '.jpeg': 'image/jpeg', '.jpg': 'image/jpeg', '.js': 'text/javascript',
-    '.json': 'application/json', '.mjs': 'text/javascript', '.mp3': 'audio/mpeg', '.mp4': 'video/mp4',
-    '.otf': 'font/otf', '.png': 'image/png', '.svg': 'image/svg+xml', '.ttf': 'font/ttf',
-    '.webm': 'video/webm', '.webp': 'image/webp', '.woff': 'font/woff', '.woff2': 'font/woff2',
-  })[ext] || 'application/octet-stream';
 }
 
 function sha256(bytes) {
@@ -251,7 +239,7 @@ function assetContext(options) {
       throw new OfflinePageExportError('asset_too_large', `remote asset exceeds 25 MB: ${resolved.identity}`, { url: resolved.identity, size: bytes.length });
     }
     const digest = sha256(bytes);
-    const mime = mimeFor(resolved.identity, response.headers && response.headers.get('content-type'));
+    const mime = mimeFor(resolved.identity, 'application/octet-stream', response.headers && response.headers.get('content-type'));
     const item = { url: resolved.identity, origin: new URL(resolved.identity).origin, size: bytes.length, sha256: digest, mime };
     remote.set(resolved.identity, item);
     if (approvals && approvals.get(resolved.identity) !== digest) {
