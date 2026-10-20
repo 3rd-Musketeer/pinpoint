@@ -121,6 +121,17 @@ test('同一次库改动后老地址 /annotate.js 也发新版', async (t) => {
   assert.equal(bundle.annotateClientSrc(), `/annotate.${served.hash}.js`, '注入点与老地址是同一版');
 });
 
+test('正文评论入口比完整客户端小，文章页注入它，画布注入仍是 annotate', async (t) => {
+  const { bundle } = await bundleCopyFor(t);
+  const prose = await bundle.ensureProseBundle();
+  const full = await bundle.ensureAnnotateBundle();
+  assert.ok(prose.br.length < full.br.length / 2, `prose br ${prose.br.length} vs annotate br ${full.br.length}`);
+  assert.ok(prose.js.includes('startProseComments') || prose.js.length > 1000);
+  assert.match(bundle.proseClientSrc(), new RegExp(`^/prose\\.${prose.hash}\\.js$`));
+  assert.match(bundle.annotateClientSrc(), /^\/annotate\./);
+  assert.equal(bundle.proseBundleByHash(prose.hash).js, prose.js);
+});
+
 test('import 图里的库被删 → 构建显式失败，注入点回退老地址而不是静默发旧版', async (t) => {
   const { bundle, srcRoot } = await bundleCopyFor(t);
   const annStatus = path.join(srcRoot, 'shared', 'ann-status.js');

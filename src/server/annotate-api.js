@@ -17,8 +17,11 @@ import { formatProjectError } from '../shared/project-errors.js';
 import { articlePageRows } from './lib/article-board.js';
 import {
   ANNOTATE_BUNDLE_URL_RE,
+  PROSE_BUNDLE_URL_RE,
   annotateBundleByHash,
   ensureAnnotateBundle,
+  ensureProseBundle,
+  proseBundleByHash,
 } from './lib/annotate-bundle.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -139,6 +142,8 @@ export function createAnnotateHandler(options = {}) {
   // 构建产物的取用口。测试注入口（与 registry/stores 同一模式）；缺省走真构建。
   const ensureBundle = options.ensureAnnotateBundle || ensureAnnotateBundle;
   const bundleByHash = options.annotateBundleByHash || annotateBundleByHash;
+  const ensureProse = options.ensureProseBundle || ensureProseBundle;
+  const proseByHash = options.proseBundleByHash || proseBundleByHash;
   // The repo this service serves from (vite.config passes its own root).
   // Reported on /health so the CLI can catch a service running out of a stale
   // or foreign directory. Not to be confused with `root` above = data root.
@@ -237,15 +242,20 @@ export function createAnnotateHandler(options = {}) {
 
   async function serveAnnotateClient(req, res, urlPath) {
     res.setHeader('Vary', 'Accept-Encoding');
+    const prose = urlPath === '/prose.js' || PROSE_BUNDLE_URL_RE.test(urlPath);
+    const ensure = prose ? ensureProse : ensureBundle;
+    const byHash = prose ? proseByHash : bundleByHash;
+    const urlRe = prose ? PROSE_BUNDLE_URL_RE : ANNOTATE_BUNDLE_URL_RE;
+    const plain = prose ? '/prose.js' : '/annotate.js';
     let artifact = null;
-    const hashMatch = urlPath !== '/annotate.js' ? urlPath.match(ANNOTATE_BUNDLE_URL_RE) : null;
+    const hashMatch = urlPath !== plain ? urlPath.match(urlRe) : null;
     if (hashMatch) {
-      artifact = bundleByHash(hashMatch[1]);
+      artifact = byHash(hashMatch[1]);
       if (!artifact) {
         // 进程重启会清掉内存里的历史产物；同内容构建出的哈希不变，重编一次
         // 就能对上缓存页带来的地址。还对不上就是真不认识的哈希，404。
         try {
-          const fresh = await ensureBundle();
+          const fresh = await ensure();
           if (fresh.hash === hashMatch[1]) artifact = fresh;
         } catch (error) {
           logBundleErrorOnce(error);
@@ -258,13 +268,13 @@ export function createAnnotateHandler(options = {}) {
       if (!artifact) {
         res.statusCode = 404;
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        res.end(`unknown annotate bundle: ${urlPath}`);
+        res.end(`unknown ${prose ? 'prose' : 'annotate'} bundle: ${urlPath}`);
         return;
       }
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     } else {
       try {
-        artifact = await ensureBundle();
+        artifact = await ensure();
       } catch (error) {
         logBundleErrorOnce(error);
         res.statusCode = 500;
@@ -315,7 +325,8 @@ export function createAnnotateHandler(options = {}) {
   const routes = [
     {
       methods: GET_HEAD,
-      match: (urlPath) => urlPath === '/annotate.js' || ANNOTATE_BUNDLE_URL_RE.test(urlPath),
+      match: (urlPath) => urlPath === '/annotate.js' || urlPath === '/prose.js'
+        || ANNOTATE_BUNDLE_URL_RE.test(urlPath) || PROSE_BUNDLE_URL_RE.test(urlPath),
       run: async ({ req, res, urlPath }) => { await serveAnnotateClient(req, res, urlPath); return true; },
     },
     {
@@ -573,6 +584,7 @@ export default function annotateApi(options = {}) {
       // 启动即构建一次，注入点从第一个页面起就能引用哈希地址；失败只落日志，
       // 不挡端口监听 —— 第一个 /annotate.js 请求会把原因带回给页面（500）。
       ensureAnnotateBundle().catch((error) => logBundleErrorOnce(error));
+      ensureProseBundle().catch((error) => logBundleErrorOnce(error));
       server.middlewares.use(async (req, res, next) => {
         const urlPath = parseReqUrl(req).pathname;
         if (await handleAnnotate(req, res, urlPath)) return;

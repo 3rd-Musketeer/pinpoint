@@ -41,10 +41,11 @@ export function annotateBundleSources() {
 // 哈希地址的形状与 hashJs 的截断长度绑死（SSOT 在这里）：/annotate.<hash>.js。
 const HASH_RE = '[0-9a-f]{10}';
 export const ANNOTATE_BUNDLE_URL_RE = new RegExp(`^\\/annotate\\.(${HASH_RE})\\.js$`);
+export const PROSE_BUNDLE_URL_RE = new RegExp(`^\\/prose\\.(${HASH_RE})\\.js$`);
 
-function esbuildOptions() {
+function esbuildOptions(entryName) {
   return {
-    entryPoints: [path.join(SRC, 'client', 'annotate.js')],
+    entryPoints: [path.join(SRC, 'client', entryName)],
     // absWorkingDir 钉住 metafile 路径基准（相对 SRC），不随进程 cwd 漂移。
     absWorkingDir: SRC,
     bundle: true,
@@ -89,11 +90,19 @@ function toArtifact(result) {
  * minify:false 仅供测试对未压缩中间产物断言。
  */
 export async function buildAnnotateBundle({ minify = true } = {}) {
-  return toArtifact(await esbuild.build({ ...esbuildOptions(), minify }));
+  return toArtifact(await esbuild.build({ ...esbuildOptions('annotate.js'), minify }));
 }
 
 function buildAnnotateBundleSync() {
-  return toArtifact(esbuild.buildSync(esbuildOptions()));
+  return toArtifact(esbuild.buildSync(esbuildOptions('annotate.js')));
+}
+
+export async function buildProseBundle({ minify = true } = {}) {
+  return toArtifact(await esbuild.build({ ...esbuildOptions('prose-boot.js'), minify }));
+}
+
+function buildProseBundleSync() {
+  return toArtifact(esbuild.buildSync(esbuildOptions('prose-boot.js')));
 }
 
 export class AnnotateBundleError extends Error {
@@ -121,6 +130,13 @@ let current = null;          // 最新一次成功构建
 let currentMtime = null;     // current 覆盖到的源文件 max-mtime；NaN = 过期待重编
 let trackedInputs = [];      // 上一次构建的 import 图（绝对路径），失效名单的一部分
 let building = null;         // 在途的 async 构建（并发调用共享同一份 promise）
+
+// 文章页正文评论入口（prose-boot.js）。和完整客户端各留一份缓存：文章页不下载画布标注。
+const proseArtifacts = new Map();
+let proseCurrent = null;
+let proseMtime = null;
+let proseInputs = [];
+let proseBuilding = null;
 
 // 失效判定范围 = 固定名单 + 上一次构建的 import 图。只看固定名单会漏掉被
 // annotate.js import 的共享库（改了它们连老地址都一直发旧版）；只看 import 图
@@ -239,6 +255,75 @@ export function annotateClientSrc() {
     return `/annotate.${currentAnnotateBundle().hash}.js`;
   } catch {
     return '/annotate.js';
+  }
+}
+
+function proseInvalidationFiles() {
+  const fixed = [path.join(SRC, 'client', 'prose-boot.js')];
+  return proseInputs.length ? [...fixed, ...proseInputs] : fixed;
+}
+
+function proseStamp() {
+  try { return maxSourceMtime(proseInvalidationFiles()); } catch { return null; }
+}
+
+function proseFresh() {
+  if (!proseCurrent) return false;
+  const stamp = proseStamp();
+  return stamp !== null && stamp === proseMtime;
+}
+
+function rememberProse(artifact) {
+  proseArtifacts.set(artifact.hash, artifact);
+  while (proseArtifacts.size > ARTIFACT_KEEP) proseArtifacts.delete(proseArtifacts.keys().next().value);
+  proseCurrent = artifact;
+  proseInputs = artifact.inputs;
+  return artifact;
+}
+
+function settleProse(artifact, before) {
+  rememberProse(artifact);
+  const after = proseStamp();
+  proseMtime = after !== null && after === before ? after : NaN;
+  return artifact;
+}
+
+function currentProseBundle() {
+  if (proseBuilding) {
+    if (!proseCurrent) throw new AnnotateBundleError('prose first build still running');
+    return proseCurrent;
+  }
+  if (proseFresh()) return proseCurrent;
+  const before = proseStamp();
+  try {
+    return settleProse(buildProseBundleSync(), before);
+  } catch (error) {
+    proseCurrent = null;
+    throw new AnnotateBundleError(describeBuildError(error));
+  }
+}
+
+export function ensureProseBundle() {
+  if (proseBuilding) return proseBuilding;
+  if (proseFresh()) return Promise.resolve(proseCurrent);
+  const before = proseStamp();
+  proseBuilding = buildProseBundle()
+    .then((artifact) => settleProse(artifact, before))
+    .catch((error) => { proseCurrent = null; throw new AnnotateBundleError(describeBuildError(error)); })
+    .finally(() => { proseBuilding = null; });
+  return proseBuilding;
+}
+
+export function proseBundleByHash(hash) {
+  return proseArtifacts.get(hash) || null;
+}
+
+/** 文章页注入点引用的正文评论入口。构建失败回退 /prose.js。 */
+export function proseClientSrc() {
+  try {
+    return `/prose.${currentProseBundle().hash}.js`;
+  } catch {
+    return '/prose.js';
   }
 }
 

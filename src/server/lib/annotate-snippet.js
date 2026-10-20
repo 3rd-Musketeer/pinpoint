@@ -10,7 +10,7 @@
  * storage-unify：entryId 一律是「这条内容属于哪一页」的页 id，注入方都落页桶，
  * 不落缺省 pinpoint 桶。
  */
-import { annotateClientSrc } from './annotate-bundle.js';
+import { annotateClientSrc, proseClientSrc } from './annotate-bundle.js';
 import { parseReqUrl } from './req-url.js';
 
 /**
@@ -22,7 +22,9 @@ export function annotateSnippet(entryId, options = {}) {
   const prose = options.prose
     ? `;window.__pinpointProse=${JSON.stringify({ project: String(options.prose.project), article: String(options.prose.article) }).replace(/</g, '\\u003c')}`
     : '';
-  return `<script>window.__pinpointEntry='${entryId}'${prose}</script><script src="${annotateClientSrc()}"></script>`;
+  // 文章页只用正文评论：注入 prose 入口，不下载画布标注那一整包。
+  const src = options.prose ? proseClientSrc() : annotateClientSrc();
+  return `<script>window.__pinpointEntry='${entryId}'${prose}</script><script src="${src}"></script>`;
 }
 
 export function injectAnnotateClient(html, entryId, options = {}) {

@@ -157,7 +157,7 @@ test('文章代理：真 vite + 站点替身', async (t) => {
     });
     const body = await res.text();
     assert.match(body, /<h1 id="stub-article">\/demo\/intro\/<\/h1>/);
-    assert.match(body, /<script>window\.__pinpointEntry='demo_intro';window\.__pinpointProse=\{"project":"demo","article":"intro"\}<\/script><script src="\/annotate[^"]*\.js"><\/script>\n<\/body>/);
+    assert.match(body, /<script>window\.__pinpointEntry='demo_intro';window\.__pinpointProse=\{"project":"demo","article":"intro"\}<\/script><script src="\/prose[^"]*\.js"><\/script>\n<\/body>/);
     assert.equal(Number(res.headers.get('content-length')), Buffer.byteLength(body));
 
     const off = await (await fetch(`${origin}/demo/intro/?annotate=off`, { headers: HTML })).text();
