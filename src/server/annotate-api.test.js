@@ -430,6 +430,117 @@ test('build failure is a loud 500 with the reason; retained hashes keep serving'
   assert.equal(retained.res.statusCode, 200);
 });
 
+// ---- /prose.js · /prose.<hash>.js（A6：文章页正文评论入口，与 annotate 同一套缓存契约）-----------
+
+// bundleStub 的压缩体基于它自己的 js 算，改 js 的 stub 必须连压缩一起重算。
+function proseStub() {
+  const js = '/* prose bundle stub */console.log("prose");';
+  return {
+    js,
+    hash: '5e5e5e5e5e',
+    gzip: zlib.gzipSync(Buffer.from(js)),
+    br: zlib.brotliCompressSync(Buffer.from(js)),
+  };
+}
+
+// annotate 侧装另一份哈希不同的 stub：两条路由共用 serveAnnotateClient，参数
+// 串了（prose 拿到 annotate 的 ensure / byHash）会直接体现在字节与 ETag 上。
+function withProseStub(t, artifact, ensureError) {
+  const fx = withFixture(t);
+  const annotate = bundleStub({ hash: 'aaaa000000' });
+  const handler = createAnnotateHandler({
+    dataRoot: fx.dataRoot,
+    registry: fx.registry,
+    annotateBundleByHash: (hash) => (hash === annotate.hash ? annotate : null),
+    ensureAnnotateBundle: () => Promise.resolve(annotate),
+    proseBundleByHash: (hash) => (hash === artifact.hash ? artifact : null),
+    ensureProseBundle: () => (ensureError ? Promise.reject(ensureError) : Promise.resolve(artifact)),
+  });
+  return { ...fx, handler, annotate };
+}
+
+test('GET /prose.js serves the prose artifact with ETag + no-cache; /annotate.js keeps serving the full client', async (t) => {
+  const artifact = proseStub();
+  const { handler, annotate } = withProseStub(t, artifact);
+  const { res } = await call(handler, 'GET', '/prose.js', undefined, { 'accept-encoding': 'br' });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.headers.ETag, `"${artifact.hash}"`);
+  assert.equal(res.headers['Cache-Control'], 'no-cache');
+  assert.equal(res.headers.Vary, 'Accept-Encoding');
+  assert.equal(res.headers['Content-Encoding'], 'br');
+  assert.equal(zlib.brotliDecompressSync(res.body).toString('utf8'), artifact.js, 'br 解回来 = prose 产物原文');
+  const full = await call(handler, 'GET', '/annotate.js', undefined, { 'accept-encoding': 'br' });
+  assert.equal(zlib.brotliDecompressSync(full.res.body).toString('utf8'), annotate.js, '老地址仍是完整客户端，没被 prose 串掉');
+});
+
+test('GET /prose.js answers If-None-Match with 304; a different ETag is a 200', async (t) => {
+  const artifact = proseStub();
+  const { handler } = withProseStub(t, artifact);
+  for (const header of [`"${artifact.hash}"`, `W/"${artifact.hash}"`, `"${artifact.hash}", "other000000"`, '*']) {
+    const { res } = await call(handler, 'GET', '/prose.js', undefined, { 'if-none-match': header });
+    assert.equal(res.statusCode, 304, header);
+    assert.equal(res.headers.ETag, `"${artifact.hash}"`);
+    assert.equal(res.chunks.length, 0, '304 无响应体');
+  }
+  const miss = await call(handler, 'GET', '/prose.js', undefined, { 'if-none-match': '"other000000"' });
+  assert.equal(miss.res.statusCode, 200);
+  const headOld = await call(handler, 'HEAD', '/prose.js');
+  assert.equal(headOld.res.statusCode, 200);
+  assert.equal(headOld.res.headers.ETag, `"${artifact.hash}"`);
+  assert.equal(headOld.res.chunks.length, 0);
+});
+
+test('GET /prose.<hash>.js is immutable and encoding-negotiated; HEAD returns headers only', async (t) => {
+  const artifact = proseStub();
+  const { handler } = withProseStub(t, artifact);
+  const hashed = `/prose.${artifact.hash}.js`;
+  const hit = await call(handler, 'GET', hashed, undefined, { 'accept-encoding': 'gzip, deflate, br' });
+  assert.equal(hit.res.statusCode, 200);
+  assert.equal(hit.res.headers['Cache-Control'], 'public, max-age=31536000, immutable');
+  assert.equal(hit.res.headers.Vary, 'Accept-Encoding');
+  assert.equal(hit.res.headers['Content-Encoding'], 'br');
+  assert.equal(hit.res.headers.ETag, undefined, 'immutable 地址不需要 ETag 协商');
+  const plain = await call(handler, 'GET', hashed);
+  assert.equal(plain.res.headers['Content-Encoding'], undefined);
+  assert.equal(plain.res.body.toString('utf8'), artifact.js);
+  const head = await call(handler, 'HEAD', hashed, undefined, { 'accept-encoding': 'br' });
+  assert.equal(head.res.statusCode, 200);
+  assert.equal(head.res.headers['Content-Length'], String(artifact.br.length), 'HEAD 给全元数据');
+  assert.equal(head.res.chunks.length, 0, 'HEAD 无响应体');
+});
+
+test('unknown prose hash is a loud 404 naming prose; stale-hash rebuild finds the same content', async (t) => {
+  const artifact = proseStub();
+  // byHash 找不到（进程重启内存清空）但 ensure 重编出同哈希 → 200；对不上是真
+  // 不认识的哈希，404 且消息点名 prose（不是 annotate 的那条文案）。
+  const fx = withFixture(t);
+  const restarted = createAnnotateHandler({
+    dataRoot: fx.dataRoot,
+    registry: fx.registry,
+    proseBundleByHash: () => null,
+    ensureProseBundle: () => Promise.resolve(artifact),
+  });
+  const rematched = await call(restarted, 'GET', `/prose.${artifact.hash}.js`);
+  assert.equal(rematched.res.statusCode, 200);
+  const unknown = await call(restarted, 'GET', '/prose.0000000000.js');
+  assert.equal(unknown.res.statusCode, 404);
+  assert.match(unknown.res.text, /unknown prose bundle/);
+});
+
+test('prose build failure is a loud 500 on the fallback address, same contract as annotate', async (t) => {
+  const failure = Object.assign(new Error('prose client build failed: src/client/prose-boot.js:1 Expected ident'), {
+    name: 'AnnotateBundleError',
+  });
+  const artifact = proseStub();
+  const { handler } = withProseStub(t, artifact, failure);
+  const old = await call(handler, 'GET', '/prose.js');
+  assert.equal(old.res.statusCode, 500);
+  assert.match(old.res.text, /Expected ident/);
+  // 已发出去的哈希地址是 immutable 契约：字节还在内存里就继续发。
+  const retained = await call(handler, 'GET', `/prose.${artifact.hash}.js`);
+  assert.equal(retained.res.statusCode, 200);
+});
+
 test('a concurrent ledger write rejects a stale /status with revision_conflict and keeps the other edit', async (t) => {
   const { handler } = withFixture(t);
   // 浏览器只用来造第一条标注，判定全在 HTTP 之下：/save 推进 revision 后，
