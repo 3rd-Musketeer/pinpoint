@@ -6,19 +6,12 @@ import { createWorkbenchHandler } from '../workbench-routes.js';
 import { canvasViewHref, workbenchHref, WORKBENCH_PATH } from '../../shared/workbench-url.js';
 import { mockReq, mockRes } from '../test-harness.js';
 
-test('routeWorkbenchRequest：旧的画布视图与工作台地址 302 到 /workbench/，参数原样带上', () => {
-  for (const [url, location] of [
-    ['/?page=areta-agent-dev_hosted-pages', '/workbench/?page=areta-agent-dev_hosted-pages'],
-    ['/?page=demo_pay&mode=ios&entry=a&tab=t&section=flow', '/workbench/?page=demo_pay&mode=ios&entry=a&tab=t&section=flow'],
-    ['/?page=%E4%B8%AD', '/workbench/?page=%E4%B8%AD'],
-    ['/index.html?page=e2e-ios', '/workbench/?page=e2e-ios'],
-    ['/index.html', '/workbench/'],
-    ['/workbench', '/workbench/'],
-    ['/workbench?page=x', '/workbench/?page=x'],
-  ]) {
-    assert.deepEqual(routeWorkbenchRequest('GET', url), { action: 'redirect', location }, url);
+test('routeWorkbenchRequest：/workbench 补尾斜杠 302；旧的 /?page= 与 /index.html 不再跳（迁移期结束，owner 2026-10-20）', () => {
+  assert.deepEqual(routeWorkbenchRequest('GET', '/workbench'), { action: 'redirect', location: '/workbench/' });
+  assert.deepEqual(routeWorkbenchRequest('GET', '/workbench?page=x'), { action: 'redirect', location: '/workbench/?page=x' });
+  for (const url of ['/?page=a', '/?page=demo_pay&section=flow', '/index.html', '/index.html?page=e2e-ios']) {
+    assert.equal(routeWorkbenchRequest('GET', url), null, url);
   }
-  assert.deepEqual(routeWorkbenchRequest('HEAD', '/?page=x'), { action: 'redirect', location: '/workbench/?page=x' });
 });
 
 test('routeWorkbenchRequest：/workbench/ 改写成仓库根的 index.html；不带参数的 / 不归这里（blog 首页）', () => {
@@ -32,12 +25,17 @@ test('routeWorkbenchRequest：/workbench/ 改写成仓库根的 index.html；不
   assert.equal(routeWorkbenchRequest('POST', '/?page=a'), null);
 });
 
-test('工作台中间件：跳转回 302 + Location，改写只换 req.url 交给下一个', () => {
+test('工作台中间件：补尾斜杠回 302 + Location，改写只换 req.url 交给下一个', () => {
   const handle = createWorkbenchHandler();
   const res = mockRes();
-  assert.equal(handle(mockReq('GET', '/?page=a'), res), true);
+  assert.equal(handle(mockReq('GET', '/workbench?page=a'), res), true);
   assert.equal(res.statusCode, 302);
   assert.equal(res.headers.Location, '/workbench/?page=a');
+
+  // 旧地址不再归这里：原样放行。
+  const legacy = mockReq('GET', '/?page=a');
+  assert.equal(handle(legacy, mockRes()), false);
+  assert.equal(legacy.url, '/?page=a');
 
   const req = mockReq('GET', '/workbench/?page=a');
   assert.equal(handle(req, mockRes()), false);

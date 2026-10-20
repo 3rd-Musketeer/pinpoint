@@ -15,7 +15,7 @@ import { countColorPixels } from './png-probe.js';
 // 不经过 Astro：画布页只靠 pinpoint 服务与编译器。
 const PAGE_ID = 'e2e-project_commit-confirm';
 
-test('文章画布：工作台 /workbench/?page=&section=、旧地址跳转、混排节、不进 Pages、左上角回正文、嵌入版、ppnt shot', async ({ page }) => {
+test('文章画布：工作台 /workbench/?page=&section=、混排节、不进 Pages、左上角回正文、嵌入版、ppnt shot', async ({ page }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   const pageErrors = [];
@@ -44,16 +44,6 @@ test('文章画布：工作台 /workbench/?page=&section=、旧地址跳转、�
     await expect(page.getByText('页面不存在')).toHaveCount(0);
     // 画布图注的编号与正文节字母一致。
     await expect(page.locator('#wb-board-panel [data-screen="card-plain"] .wb-cap-ref')).toHaveText('C1');
-  });
-
-  await test.step('旧地址 /?page=…&section= 跳到 /workbench/：参数原样带上，落到那一节，地址栏留在 /workbench/', async () => {
-    await page.goto(`/?page=${PAGE_ID}&section=confirm`);
-    await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, PAGE_ID);
-    await expect(page.locator('.wb-lib-item[data-ann-section="confirm"]')).toHaveClass(/\bwb-sel\b/);
-    await expect(page.locator('#wb-board-panel [data-screen="confirm-sheet"] .e2e-confirm-card')).toBeVisible();
-    await expect.poll(() => new URL(page.url()).searchParams.has('section')).toBe(false);
-    expect(new URL(page.url()).pathname).toBe('/workbench/');
-    expect(new URL(page.url()).searchParams.get('page')).toBe(PAGE_ID);
   });
 
   await test.step('工作台混排节 mixed：手机帧带机壳，帧级 comp 的那一帧是裸组件，没有错误面板', async () => {

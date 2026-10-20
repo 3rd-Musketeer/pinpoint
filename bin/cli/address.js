@@ -25,8 +25,8 @@ const SLASH_ARTICLE_RE = new RegExp(`^(${ID})/(${ID})/?$`);
 const SECTION_NUMBER_RE = /^§([1-9][0-9]*)$/;
 const NUM_SUFFIX_RE = /^(.*)#([1-9][0-9]*)$/;
 const PAGE_INDICATOR_PREFIX = '@page:';
-// 工作台地址：现行 /workbench/，旧写法 / 与 /index.html 照认（ADR 0044）。
-const WORKBENCH_PATHNAMES = new Set(['/workbench/', '/workbench/index.html', '/', '/index.html']);
+// 工作台地址：现行 /workbench/（ADR 0044）。
+const WORKBENCH_PATHNAMES = new Set(['/workbench/', '/workbench/index.html']);
 // 引用的样子：#n、#3-#7、@frame: / @a:、§2、字母编号 B / B3、<tab>:B3。这些不会是目标。
 const REF_SHAPE_RE = /^(?:#|@|§)|^[A-Z]+(?:[1-9][0-9]*)?$|^[a-zA-Z0-9_-]+:[A-Z]+(?:[1-9][0-9]*)?$/;
 

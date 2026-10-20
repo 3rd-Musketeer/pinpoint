@@ -112,7 +112,7 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 表面已经不存在的账本：文章目录删了或改了名、project 不再登记（整桶）；文章的 HTML 帧移出了 Canvas、源文件删了或服务不出、存量页的文件删了或页不在了。`ppnt comments` 把它们单独列出，不计数。桶目录在盘上就能读写：pending 的孤儿照样用 `ppnt mark` / `reply` 回，整桶孤儿也一样；任何写入都不新建页已不在的桶。清理只经 `ppnt prune <页 id>`，由 owner 决定，页已不在时连桶目录一起删。
 要避开：以为孤儿只能删、不能回；agent 替 owner 去 prune。
 
-**工作台（workbench）** · `https://pinpoint.localhost/workbench/`（壳页是仓库根的 `index.html`；旧地址 `/?page=…`、`/index.html` 跳过来）；左栏 `src/workbench/app/Sidebar.jsx`、`ArticlesSection.jsx`
+**工作台（workbench）** · `https://pinpoint.localhost/workbench/`（壳页是仓库根的 `index.html`）；左栏 `src/workbench/app/Sidebar.jsx`、`ArticlesSection.jsx`
 看画布视图和存量页、做画布标注的那个应用：满屏画布，左栏浮动面板，底部横条，右栏标注列表。左栏“页面”tab 里有两组：上面“文章”组按 project 列出每篇文章，点有画布的文章行打开它的画布视图，没有画布的在新标签页打开文章页，行尾“阅读”钮总是在新标签页打开文章页；下面“页面”组列存量页（置顶、最近、全部页）。
 要避开：“Pages”单指工作台（Pages 列表只是“页面”组）。
 

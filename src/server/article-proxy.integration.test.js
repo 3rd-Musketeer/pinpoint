@@ -211,20 +211,16 @@ test('文章代理：真 vite + 站点替身', async (t) => {
     assert.equal((await ownPost.json()).method, 'POST');
   });
 
-  await t.test('blog 首页与工作台：不带参数的 / 归站点、不注入；旧地址 302 到 /workbench/；/workbench/ 是工作台壳页', async () => {
+  await t.test('blog 首页与工作台：不带参数的 / 归站点、不注入；旧地址不再 302；/workbench/ 是工作台壳页', async () => {
     const home = await fetch(`${origin}/`, { headers: HTML });
     assert.equal(home.status, 200);
     const homeBody = await home.text();
     assert.match(homeBody, /<h1 id="stub-article">\/<\/h1>/);
     assert.doesNotMatch(homeBody, /__pinpointEntry|annotate/);
-    for (const [from, to] of [
-      ['/?page=demo_intro&section=flow', '/workbench/?page=demo_intro&section=flow'],
-      ['/index.html?page=dir-entry', '/workbench/?page=dir-entry'],
-      ['/index.html', '/workbench/'],
-    ]) {
+    // 旧地址（/?page=…、/index.html）不再 302（ADR 0044 迁移期结束）：不归工作台中间件。
+    for (const from of ['/?page=demo_intro&section=flow', '/index.html?page=dir-entry', '/index.html']) {
       const res = await fetch(`${origin}${from}`, { headers: HTML, redirect: 'manual' });
-      assert.equal(res.status, 302, from);
-      assert.equal(res.headers.get('location'), to, from);
+      assert.equal(res.headers.get('location'), null, from);
       await res.text();
     }
     const shell = await fetch(`${origin}/workbench/?page=demo_intro`, { headers: HTML });

@@ -29,12 +29,13 @@ test('parseAddress：斜杠形、页 id 形、文章网址都是同一篇文章�
     'http://127.0.0.1:5750/browser-use/payment-confirm/#overlay=confirm',
     '/browser-use/payment-confirm/',
     'https://pinpoint.localhost/workbench/?page=browser-use_payment-confirm&section=confirm',
-    'https://pinpoint.localhost/?page=browser-use_payment-confirm&section=confirm',
-    'https://pinpoint.localhost/index.html?page=browser-use_payment-confirm',
     '@page:browser-use_payment-confirm',
   ]) {
     assert.deepEqual(parseAddress(token), article, token);
   }
+  // 工作台旧地址（/?page=、/index.html?page=）不再认（跳转已删，owner 2026-10-20）。
+  assert.equal(parseAddress('https://pinpoint.localhost/?page=browser-use_payment-confirm&section=confirm'), null);
+  assert.equal(parseAddress('https://pinpoint.localhost/index.html?page=browser-use_payment-confirm'), null);
   assert.deepEqual(parseAddress('browser-use/payment-confirm#3'), { ...article, n: 3 });
   assert.deepEqual(parseAddress('browser-use_payment-confirm#3'), { ...article, n: 3 });
   assert.deepEqual(parseAddress('routine-creator'), { kind: 'id', id: 'routine-creator' });

@@ -71,8 +71,7 @@ registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。�
 `GET /health` 的 `dataRoot` 字段读；`PINPOINT_DATA_DIR` 整体覆盖数据根（e2e 用的就是它）。
 
 账本 = 桶内的一个表面：
-- **画布**是一本固定名 `@canvas.json`，不跟工作台 pathname 走（`/workbench/` 与旧地址
-  同一本）；`/api/frame` 嵌入帧也写这本（桶 = 帧所属的页）。
+- **画布**是一本固定名 `@canvas.json`，不跟工作台 pathname 走；`/api/frame` 嵌入帧也写这本（桶 = 帧所属的页）。
 - **文档、直开页**仍是一个 pathname 一本，命名规则见
   `src/shared/annotate-page-key.js`。文章的每个 HTML 帧也按它的页面路径各一本（`<文件>~<hash>.json`）。
 - 文章的桶里还有正文评论的固定账本 `@prose.json`，见下文“正文评论”。

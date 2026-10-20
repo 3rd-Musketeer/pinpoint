@@ -215,7 +215,7 @@
 | 首段 | 去向 |
 | --- | --- |
 | 不带参数的 `/` | 文章站点的 blog 首页：所有登记 project 的全部文章（ADR 0044） |
-| `workbench`（`/workbench/`） | 工作台：改写成仓库根的 `index.html`；壳页带 `<base href="/">`，板里相对站点根的地址照旧解析。旧地址 `/?<参数>`、`/index.html[?<参数>]` 302 到 `/workbench/`，参数原样带上（`src/server/lib/workbench-routes.js`） |
+| `workbench`（`/workbench/`） | 工作台：改写成仓库根的 `index.html`；壳页带 `<base href="/">`，板里相对站点根的地址照旧解析。`/workbench` 302 补尾斜杠（`src/server/lib/workbench-routes.js`） |
 | 登记过的 project id（registry kind `project`） | 文章站点：Astro 开发服务器，路径原样，站点不设 base |
 | `_astro`（含 HMR websocket）、`_image` | Astro 开发服务器自己的 vite 内部路径与图片端点 |
 | 其他一切 | pinpoint 原有的中间件链，行为不变 |
