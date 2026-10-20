@@ -14,7 +14,7 @@ test('活卡片 HTTP 500 后离开视野仍保留新稿，重试落盘后再卸�
   const initial = await read();
   const id = 'p3-card-http';
   const seeded = await request.post('/save', { data: { entry, page: key, path, baseRevision: initial.revision,
-    annotations: [{ id, type: 'element', selector: '#top-title', text: '标题', content: '卡片磁盘旧稿', status: 'open' }] } });
+    annotations: [{ id, type: 'element', targets: [{ ref: 'i1', selector: '#top-title', text: '标题' }], content: '卡片磁盘旧稿', status: 'open' }] } });
   expect(seeded.ok()).toBe(true);
   await page.route(`**/sites/${entry}/board.json`, async route => {
     const board = await (await route.fetch()).json();
