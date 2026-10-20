@@ -6,7 +6,7 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 
-import { run } from './pinpoint-cli.js';
+import { run } from './cli/dispatch.js';
 
 /** pid 是否还在。EPERM = 进程在，只是不归我们（不该按「死了」处理）。 */
 function pidAlive(pid) {

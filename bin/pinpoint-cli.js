@@ -16,22 +16,12 @@
  *
  * 进程原语（发信号、spawn、sleep）由 bin/pinpoint.mjs 注入 io，本文件只做判定，
  * 所以两种真实故障形态（进程死了 / 进程活着但配置错）都能拿构造输入单测。
+ *
+ * 本文件只是导出面（测试与既有消费方从这里 import）：运行时入口在 cli/dispatch.js
+ * —— run / --json 信封 / 按命令动态 import 的 dispatch 都在那边，`ppnt <命令>` 只
+ * 加载自己那棵子树；从这里 import 会把下面 re-export 的全部子树拖进来（2026-10-20
+ * r2，此前 bin/pinpoint.mjs 从这里进，status 也要付 annotate / show 的 ~80ms）。
  */
-import { USAGE, helpFor, reportUsageError } from './cli/args.js';
-import { ioOf } from './cli/core.js';
-import { runAdd, runPrune, runRemove } from './cli/registry.js';
-import { runMv } from './cli/mv.js';
-import { runStatus, runStop, runStart, runRestart } from './cli/service.js';
-import { runBuild, runRender } from './cli/pages.js';
-import { runCheck, runComments, runLocate, runShot, runMark, runReply } from './cli/annotate.js';
-import { runShow } from './cli/show.js';
-import { runList } from './cli/list.js';
-import { runMigrate } from './cli/migrate.js';
-import { runNew } from './cli/new.js';
-import { runOpen } from './cli/open.js';
-import { runDev } from './cli/sandbox.js';
-
-// 原有导出面保持不变：测试与 bin/pinpoint.mjs 仍从这里 import。
 export {
   DEFAULT_ORIGIN,
   PORTLESS_HOSTNAME,
@@ -127,102 +117,4 @@ export {
   runList,
 } from './cli/list.js';
 
-/**
- * 每个命令都认 --json（docs/registry.md“CLI”）：stdout 只出一个 JSON 文档，人读的提示照旧走 stderr。
- * NATIVE_JSON 里的命令自己排 JSON；其余命令的文字输出包进同一个信封
- * { ok, exit, command, error?, output: [行], stderr: [行] }。原生命令出错没打 JSON 时也给信封，
- * 所以带 --json 的调用永远能 JSON.parse(stdout)。dev 是常驻命令，自己处理 --json。
- */
-const NATIVE_JSON = new Set(['show', 'check', 'comments', 'list', 'locate', 'shot', 'mark', 'reply', 'build', 'status', 'new', 'open']);
-const SELF_JSON = new Set(['dev']);
-
-function jsonEnvelope(command, code, output, stderr) {
-  const firstError = stderr.find((line) => /^错误：/.test(line)) || (code ? stderr[0] : undefined);
-  return {
-    ok: code === 0,
-    exit: code,
-    command: command || null,
-    ...(code && firstError ? { error: String(firstError).replace(/^错误：/, '') } : {}),
-    output,
-    stderr,
-  };
-}
-
-async function runAsJson(argv, io) {
-  const { out, err } = ioOf(io);
-  // 命令与原生命令判定都看剥掉 --json 之后的 argv：--json 是全局开关，写在前
-  // 面（ppnt --json list）和写在后面是同一次调用，信封的 command 字段与原生命
-  // 令的顶层文档形状不该随 flag 位置变。
-  const stripped = argv.filter((arg) => arg !== '--json');
-  const command = stripped[0];
-  const native = NATIVE_JSON.has(command);
-  const output = [];
-  const stderr = [];
-  const captured = {
-    ...io,
-    out: (line) => output.push(String(line)),
-    err: (line) => {
-      stderr.push(String(line));
-      err(line);
-    },
-  };
-  // dispatch 收「命令在头」的 argv；原生命令要自己看到 --json 才出原生 JSON，
-  // 所以剥掉的前置 flag 补回到尾部 —— 位置从此不挑（parseArgs 对 flag 顺序不敏感）。
-  const code = await dispatch(native ? [...stripped, '--json'] : stripped, captured);
-  if (native && output.length) {
-    try {
-      JSON.parse(output.join('\n'));
-      out(output.join('\n'));
-      return code;
-    } catch { /* 原生命令这次打的不是 JSON（不该发生）：包进信封 */ }
-  }
-  out(JSON.stringify(jsonEnvelope(command, code, output, stderr), null, 2));
-  return code;
-}
-
-export async function run(argv, io = {}) {
-  const { out } = ioOf(io);
-  const stripped = argv.filter((arg) => arg !== '--json');
-  if (argv.length === 0 || stripped[0] === '-h' || stripped[0] === '--help') {
-    out(USAGE);
-    return 0;
-  }
-  const wantsHelp = argv.includes('-h') || argv.includes('--help');
-  if (argv.includes('--json') && !wantsHelp && !SELF_JSON.has(stripped[0])) return runAsJson(argv, io);
-  // dev 自己处理 --json，不经 runAsJson：这里同样把命令归一到头（ppnt --json dev …）。
-  return dispatch(stripped.length === argv.length ? argv : [...stripped, '--json'], io);
-}
-
-function dispatch(argv, io) {
-  const { err, out } = ioOf(io);
-  switch (argv[0]) {
-    case 'help':
-      out(helpFor(argv[1]));
-      return 0;
-    case 'logo': return import('./cli/logo.js').then(({ runLogo }) => runLogo(argv, io));
-    case 'list': return runList(argv, io);
-    case 'show': return runShow(argv, io);
-    case 'new': return runNew(argv, io);
-    case 'open': return runOpen(argv, io);
-    case 'dev': return runDev(argv, io);
-    case 'add': return runAdd(argv, io);
-    case 'mv': return runMv(argv, io);
-    case 'remove': return runRemove(argv, io);
-    case 'status': return runStatus(argv, io);
-    case 'start': return runStart(argv, io);
-    case 'stop': return runStop(argv, io);
-    case 'restart': return runRestart(argv, io);
-    case 'build': return runBuild(argv, io);
-    case 'render': return runRender(argv, io);
-    case 'check': return runCheck(argv, io);
-    case 'comments': return runComments(argv, io);
-    case 'locate': return runLocate(argv, io);
-    case 'shot': return runShot(argv, io);
-    case 'mark': return runMark(argv, io);
-    case 'reply': return runReply(argv, io);
-    case 'prune': return runPrune(argv, io);
-    case 'migrate': return runMigrate(argv, io);
-    default:
-      return reportUsageError(argv[0], `未知命令：${argv[0]}`, err);
-  }
-}
+export { run } from './cli/dispatch.js';
