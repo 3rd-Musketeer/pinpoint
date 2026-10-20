@@ -27,3 +27,14 @@ test('stripEsm：空输入与无 ESM 的正文原样（trim 后）返回', () =>
   assert.equal(stripEsm(null), '');
   assert.equal(stripEsm('\n正文。\n'), '正文。');
 });
+
+test('stripEsm：ASI import（行末无分号）不越过空行吃正文（r4 review 修复轮）', () => {
+  // 旧修法（整篇找分号）把「正文第一段」「第二段有个分号; 在这里」连段吃掉，只剩第三段。
+  const mdx = 'import x from "y"\n\n正文第一段。\n\n第二段有个分号; 在这里。\n\n第三段。\n';
+  assert.equal(stripEsm(mdx), '正文第一段。\n\n第二段有个分号; 在这里。\n\n第三段。');
+});
+
+test('stripEsm：连续两条 ASI import，空行后的正文带 ASCII 分号原样保留', () => {
+  const mdx = 'import a from "1"\nimport b from "2"\n\n正文; 有分号。\n';
+  assert.equal(stripEsm(mdx), '正文; 有分号。');
+});
