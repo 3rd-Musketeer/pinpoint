@@ -4,7 +4,7 @@
 // 点帧定位并选中；右栏标注定位到画布或 HTML 活卡片里的钉子。
 // 地址：#canvas=<节 id>[&frame=<帧 id>][&ann=<#n>]。打开时 pushState 一条，后退就关；
 // 直接带 hash 打开文章时关闭只去掉 hash，不离开文章。
-// 画布里换了节（平移、大纲）用 replaceState 跟着换 #canvas=，不多压历史。旧地址 #overlay= 照样认。
+// 画布里换了节（平移、大纲）用 replaceState 跟着换 #canvas=，不多压历史。
 // 修饰键 / 中键点这些入口：照常走链接（顶栏和卡片按钮在新标签页开整页画布，右栏卡片在新标签页开带浮层的文章）。
 import { canvasHref } from './canvas-card.js';
 import { layers } from './layers.js';
@@ -518,7 +518,6 @@ export function initCanvasOverlay() {
   // 直接带 #canvas= 打开文章（刷新、分享的链接）。深链落点不预热，直接打开。
   const initial = parseCanvasHash(location.hash);
   if (initial && cardOf(initial.section)) {
-    if (location.hash.startsWith('#overlay=')) history.replaceState(history.state, '', canvasHash(initial.section, initial));
     open(initial.section, { frame: initial.frame, ann: initial.ann, pushed: false });
   }
 

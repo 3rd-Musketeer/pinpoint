@@ -13,14 +13,13 @@ export function canvasHash(sectionId, { frame = '', ann = '' } = {}) {
 }
 
 /** `#canvas=<节>[&frame=<帧>][&ann=<n>]` → { section, frame, ann }。
- * ann 是正整数或 null；旧地址 #overlay= 同样读取，其他 hash 返回 null。
+ * ann 是正整数或 null；其他 hash 返回 null。
  */
 export function parseCanvasHash(hash) {
   const raw = String(hash || '').replace(/^#/, '');
-  const key = raw.startsWith('canvas=') ? 'canvas' : raw.startsWith('overlay=') ? 'overlay' : '';
-  if (!key) return null;
+  if (!raw.startsWith('canvas=')) return null;
   const q = new URLSearchParams(raw);
-  const section = q.get(key) || '';
+  const section = q.get('canvas') || '';
   if (!section) return null;
   const frame = q.get('frame') || '';
   const n = Number(q.get('ann'));

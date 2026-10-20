@@ -21,13 +21,8 @@ test('canvas hash: legacy view=frame is ignored; generated links only name a fra
   assert.deepEqual(parseCanvasHash('#canvas=flow&frame=ask&view=frame&ann=4'), { section: 'flow', frame: 'ask', ann: 4 });
 });
 
-test('canvas hash: the old #overlay= links still open the overlay', () => {
-  assert.deepEqual(parseCanvasHash('#overlay=flow&frame=ask'), { section: 'flow', frame: 'ask', ann: null });
-  assert.deepEqual(parseCanvasHash('#overlay=flow'), { section: 'flow', frame: '', ann: null });
-});
-
 test('canvas hash: other hashes are not the overlay', () => {
-  for (const h of ['', '#', '#flow', '#canvas=', '#overlay=', '#frame=ask&canvas=flow', '#canvasx=flow', null, undefined]) {
+  for (const h of ['', '#', '#flow', '#canvas=', '#overlay=', '#overlay=flow', '#frame=ask&canvas=flow', '#canvasx=flow', null, undefined]) {
     assert.equal(parseCanvasHash(h), null, String(h));
   }
 });

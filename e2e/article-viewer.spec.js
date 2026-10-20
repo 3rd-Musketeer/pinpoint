@@ -237,7 +237,7 @@ test('画布浮层：点帧打开整张画布并选中；从文章进画布不�
     expect(await activeInfo(page)).toMatchObject({ id: 'btn-canvas' });
   });
 
-  await test.step('直接带 #canvas= 打开（刷新、分享）：浮层打开；关闭只去掉 hash，留在文章上；旧的 #overlay= 照样开', async () => {
+  await test.step('直接带 #canvas= 打开（刷新、分享）：浮层打开；关闭只去掉 hash，留在文章上；旧的 #overlay= 不再开', async () => {
     await page.goto('/e2e-project/');
     await openArticle(page, `${ARTICLE}#canvas=variants`);
     await expect(overlay(page)).toHaveAttribute('open', '');
@@ -248,14 +248,11 @@ test('画布浮层：点帧打开整张画布并选中；从文章进画布不�
     await expect(overlay(page)).not.toHaveAttribute('open', '');
     expect(page.url()).toBe(`${E2E_BASE_URL}${ARTICLE}`);
 
+    // 改名前的 #overlay= 旧链接不再开浮层（2026-10-20 摘掉读侧兼容），正文照常。
     await page.goto('/e2e-project/');
     await openArticle(page, `${ARTICLE}#overlay=mixed&frame=mixed-bare`);
-    await expect(overlay(page)).toHaveAttribute('open', '');
-    expect(hashOf(page)).toBe('#canvas=mixed&frame=mixed-bare');
-    await expect(overlay(page).locator('[data-ov-num]')).toHaveText('4');
-    await expect(overlay(page).locator('[data-ov-kind]')).toHaveText('画布');
-    await page.keyboard.press('Escape');
     await expect(overlay(page)).not.toHaveAttribute('open', '');
+    await expect(page.locator('.doc h1, h1').first()).toBeVisible();
 
     // 旧单帧预览地址照常打开整张画布并选中帧。
     await page.goto('/e2e-project/');
