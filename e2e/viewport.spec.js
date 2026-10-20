@@ -49,8 +49,16 @@ function layoutSize(page, selector) {
 }
 
 async function setViewport(page, key) {
+  const generation = await page.evaluate(() => window.workbench.mountGeneration());
   await page.locator(`#wbviewport [data-viewport="${key}"]`).click();
   await expect(page.locator(`#wbviewport [data-viewport="${key}"]`)).toHaveAttribute('aria-pressed', 'true');
+  // aria-pressed 来自偏好更新，早于异步装板；先确认新会话已开始，不能等到旧板的完成信号。
+  await expect.poll(() => page.evaluate(() => window.workbench.mountGeneration())).toBeGreaterThan(generation);
+  await boardSettled(page);
+}
+
+async function boardSettled(page) {
+  await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled())).toBe(true);
 }
 
 /** 手机屏的几何断言（ADR 0023：比 bounding box）：整块屏高 = 可用高 × 0.9（±1px），
@@ -75,8 +83,9 @@ test('文档条目：默认窗口 1:1 铺满，切手机缩到可用高九成居
 
   // 默认窗口态（原独立用例）：横条出「窗口｜手机」两段，1:1 铺满 = iframe 与
   // 舞台 bounding box 重合（ADR 0023：几何断言比 box）。
-  // 板装载/重装那一瞬 #wbroot 重建，data-page-mode 短暂不在（全量首跑实测 null）。轮询到它回来再断言。
-  await expect.poll(() => stageForm(page)).toBe('html');
+  // 允许装板中的过渡；几何批完成后形态必须已经生效，不能再轮询形态本身。
+  await boardSettled(page);
+  expect(await stageForm(page)).toBe('html');
   expect(await rootViewport(page)).toBe('window');
   const control = page.locator('#wbviewport');
   await expect(control).toBeVisible();
@@ -97,9 +106,8 @@ test('文档条目：默认窗口 1:1 铺满，切手机缩到可用高九成居
   await setViewport(page, 'phone');
 
   // 还是文档形态（html），只是 data-viewport=phone；iframe 还是那一个 src。
-  // 切换视口 = 重装当前板（pages.js）：#wbroot 重建那一瞬 data-page-mode 不在，
-  // 直读会拿到 null（首跑实测）。轮询到它回来再断言——断言的是形态没变，不是读的时机。
-  await expect.poll(() => stageForm(page)).toBe('html');
+  // setViewport 已等新一代板的几何批完成；此刻即时检查 CSS 钩，不给迟应用的形态宽限。
+  expect(await stageForm(page)).toBe('html');
   expect(await rootViewport(page)).toBe('phone');
   const screen = page.locator('#wb-board-panel [data-screen="doc"]');
   await expect(screen).toHaveClass(/wb-screen--phone-doc/);
@@ -147,8 +155,8 @@ test('文档条目：默认窗口 1:1 铺满，切手机缩到可用高九成居
 
   // 切回窗口：1:1 铺满，手机屏退场。
   await setViewport(page, 'window');
-  // 板装载/重装那一瞬 #wbroot 重建，data-page-mode 短暂不在（全量首跑实测 null）。轮询到它回来再断言。
-  await expect.poll(() => stageForm(page)).toBe('html');
+  // 新一代板已完成，切回也必须即时恢复文档形态。
+  expect(await stageForm(page)).toBe('html');
   expect(await rootViewport(page)).toBe('window');
   await expect(page.locator('#wb-board-panel .wb-screen--phone-doc')).toHaveCount(0);
   await expect(page.locator('#wb-board-panel .wb-phone-doc')).toHaveCount(0);
