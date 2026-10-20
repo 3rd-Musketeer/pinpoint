@@ -158,3 +158,17 @@ test('共享出帧：存量板的 mtime 在未来也按输入代次收敛，不�
   assert.ok(revised.ok);
   assert.ok(revised.html.includes('updated.css'));
 });
+
+test('R2：kit 回退变为本篇覆盖，watcher 前请求即采用新的解析选择', async (t) => {
+  const { target, write, request } = fixture(t);
+  write('home.jsx', 'import { Button } from "./components/Button.jsx"; export default function Home() { return <div className="ios-app"><Button>kit 回退</Button></div>; }');
+  assert.equal((await compilePage(target)).ok, true);
+  assert.ok((await request('home')).text.includes('kit 回退'));
+  const file = write('components/Button.jsx', 'export function Button() { return <button>LOCAL OVERRIDE</button>; }');
+  const local = await request('home');
+  assert.ok(local.text.includes('LOCAL OVERRIDE'), '原 resolved kit 没变，但缺失的本篇候选已出现');
+  fs.unlinkSync(file);
+  const fallback = await request('home');
+  assert.ok(fallback.text.includes('kit 回退'), '删除覆盖后重新采用 kit');
+  assert.ok(!fallback.text.includes('LOCAL OVERRIDE'));
+});

@@ -255,7 +255,7 @@ function kitJsxPlugin() {
  * 落到 pinpoint/kit 的同名印章。没有 project 这一层（ADR 0045）。只接本篇目录顶层文件（帧）发出的这种 import，和
  * figures/ 下的图发出的 `../components/<Name>.jsx`。
  */
-function articleComponentsPlugin(target) {
+function articleComponentsPlugin(target, resolutions = null) {
   return {
     name: 'pp3-article-components',
     setup(build) {
@@ -270,7 +270,13 @@ function articleComponentsPlugin(target) {
         const up = args.path.startsWith('../');
         if (up ? from !== figureDir : from !== pageDir) return undefined;
         const name = args.path.replace(/^\.\.?\/components\//, '').replace(/\.jsx$/, '');
-        const hit = articleComponentCandidates(target, name, KIT_JSX).find((file) => fs.existsSync(file));
+        const candidates = articleComponentCandidates(target, name, KIT_JSX);
+        const hit = candidates.find((file) => fs.existsSync(file));
+        // 只记 resolved 文件不够：缺失的高优先级候选出现时，原 kit 文件并没有变。
+        if (resolutions) resolutions.push({
+          candidates: candidates.map(file => path.relative(target.pageDir, file)),
+          selected: hit ? path.relative(target.pageDir, hit) : null,
+        });
         // 先判文本来源，不能先 realpath 后把越界的 symlink 当成另一个合法根的文件。
         if (!hit) return undefined;
         const checked = requireSource(target, hit, COMPILER_ROOTS);
@@ -290,8 +296,8 @@ function figureHelperPlugin() {
   };
 }
 
-function pluginsFor(target, inputMtimes = null) {
-  const plugins = target && target.kind === 'article' ? [articleComponentsPlugin(target), kitJsxPlugin(), figureHelperPlugin()] : [kitJsxPlugin()];
+function pluginsFor(target, inputMtimes = null, resolutions = null) {
+  const plugins = target && target.kind === 'article' ? [articleComponentsPlugin(target, resolutions), kitJsxPlugin(), figureHelperPlugin()] : [kitJsxPlugin()];
   return [...plugins, sourceBoundaryPlugin(target, COMPILER_ROOTS, inputMtimes)];
 }
 
@@ -391,6 +397,7 @@ function depRecordsFromInputs(target, inputs, exclude, inputMtimes = null) {
 
 async function compileJsxScreen(target, screenId, file) {
   const inputMtimes = new Map();
+  const resolutions = [];
   let built;
   try {
     built = await esbuild.build({
@@ -407,7 +414,7 @@ async function compileJsxScreen(target, screenId, file) {
       external: ['preact', 'preact/jsx-dev-runtime', 'pp-jsx-runtime/jsx-dev-runtime'],
       metafile: true,
       logLevel: 'silent',
-      plugins: pluginsFor(target, inputMtimes),
+      plugins: pluginsFor(target, inputMtimes, resolutions),
     });
   } catch (error) {
     return { ok: false, error: formatBuildFailure(error), diagnostics: buildFailureDiagnostics(error, target.pageDir) };
@@ -442,6 +449,7 @@ async function compileJsxScreen(target, screenId, file) {
       ok: true,
       html: renderFrameHtml(h(__ppWrapComponent(mod.default), {}), target.pageDir),
       deps: depRecordsFromInputs(target, built.metafile.inputs, [file], inputMtimes),
+      resolutions,
     };
   } catch (error) {
     const message = String((error && error.message) || error);
@@ -545,6 +553,7 @@ async function compileScreen(target, entry, options = {}) {
   }
   // 帧的 import 依赖（页内组件 / kit 印章）一并记进 sources（review R2）。
   if (result.ok && result.deps && source) source = { ...source, deps: result.deps };
+  if (result.resolutions && source) source = { ...source, resolutions: result.resolutions };
   if (result.ok && !result.document) result.html = injectAssets(result.html, options.assets || {}, target.urlBase);
   return {
     ...result,
@@ -561,6 +570,7 @@ async function compileScreen(target, entry, options = {}) {
  */
 async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
   const inputMtimes = new Map();
+  const resolutions = [];
   const { id, comp, props } = entry;
   const pageComp = path.join(target.pageDir, 'components', `${comp}.jsx`);
   const kitComp = path.join(kitJsx, `${comp}.jsx`);
@@ -607,7 +617,7 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
       external: ['preact', 'preact/jsx-dev-runtime', 'pp-jsx-runtime/jsx-dev-runtime'],
       metafile: true,
       logLevel: 'silent',
-      plugins: pluginsFor(target, inputMtimes),
+      plugins: pluginsFor(target, inputMtimes, resolutions),
     });
   } catch (error) {
     return { result: { ok: false, error: formatBuildFailure(error) }, source: null };
@@ -639,7 +649,7 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
     const deps = depRecordsFromInputs(target, built.metafile.inputs, ['__comp__.jsx', sourceRel], inputMtimes);
     return {
       result: { ok: true, html },
-      source: { file: sourceRel, mtimeMs: inputMtimes.get(fs.realpathSync(sourceAbs)) ?? fs.statSync(sourceAbs).mtimeMs, ...(deps.length ? { deps } : {}) },
+      source: { file: sourceRel, mtimeMs: inputMtimes.get(fs.realpathSync(sourceAbs)) ?? fs.statSync(sourceAbs).mtimeMs, resolutions, ...(deps.length ? { deps } : {}) },
     };
   } catch (error) {
     return { result: { ok: false, error: `${sourceDesc}: ${String((error && error.message) || error)}` }, source: null };
@@ -1266,6 +1276,9 @@ export async function loadDistScreenHtml(target, screenId, { signal } = {}) {
   const source = build?.sources?.[screenId];
   const roots = [...COMPILER_ROOTS, ...Object.values(target.sources || {})];
   const invalid = source && [source, ...(source.deps || [])].some((record) => !containedSource(target, record.file, roots).file);
+  const resolutionChanged = source?.resolutions?.some(({ candidates, selected }) => (
+    (candidates.find(file => fs.existsSync(path.resolve(target.pageDir, file))) || null) !== selected
+  ));
   const changed = (record) => {
     try { return fs.statSync(path.resolve(target.pageDir, record.file)).mtimeMs !== record.mtimeMs; }
     catch { return true; }
@@ -1276,7 +1289,7 @@ export async function loadDistScreenHtml(target, screenId, { signal } = {}) {
     : build?.boardMtimeMs !== fs.statSync(path.join(target.pageDir, 'board.json')).mtimeMs;
   const all = !build || build.tool !== compilerStamp() || boardChanged;
   const result = readDistScreen(target.entryId, screenId);
-  if (all || invalid || !source || (primary && source.file !== primary)
+  if (all || invalid || resolutionChanged || !source || (primary && source.file !== primary)
     || [source, ...(source.deps || [])].some(changed) || result.kind !== 'ok') {
     // 进入时满足输入就直接返回，否则只申请一次随后开始的 ticket，不追赶后继保存。
     const queued = pageCompilations.get(key);
