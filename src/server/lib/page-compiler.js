@@ -396,7 +396,8 @@ function depRecordsFromInputs(target, inputs, exclude, inputMtimes = null) {
 }
 
 function attemptedInputs(target, files, dirs) {
-  return [...files, ...dirs].map(([file, mtimeMs]) => ({ file: path.relative(target.pageDir, file), mtimeMs }));
+  const pageDir = fs.realpathSync(target.pageDir);
+  return [...files, ...dirs].map(([file, mtimeMs]) => ({ file: path.relative(pageDir, file), mtimeMs }));
 }
 
 async function compileJsxScreen(target, screenId, file) {
@@ -405,7 +406,7 @@ async function compileJsxScreen(target, screenId, file) {
   const attemptDirs = new Map();
   const failed = (row) => ({
     ...row, resolutions,
-    deps: attemptedInputs(target, inputMtimes, attemptDirs),
+    failedInputs: attemptedInputs(target, inputMtimes, attemptDirs),
   });
   let built;
   try {
@@ -563,6 +564,7 @@ async function compileScreen(target, entry, options = {}) {
   // 帧的 import 依赖（页内组件 / kit 印章）一并记进 sources（review R2）。
   if (result.deps && source) source = { ...source, deps: result.deps };
   if (result.resolutions && source) source = { ...source, resolutions: result.resolutions };
+  if (result.failedInputs && source) source = { ...source, failedInputs: result.failedInputs };
   if (result.ok && !result.document) result.html = injectAssets(result.html, options.assets || {}, target.urlBase);
   return {
     ...result,
@@ -616,7 +618,7 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
   const sourceRel = path.relative(target.pageDir, sourceAbs).split(path.sep).join('/');
   const sourceMtime = fs.statSync(sourceAbs).mtimeMs;
   const failed = (result) => ({ result, source: {
-    file: sourceRel, mtimeMs: sourceMtime, resolutions, deps: attemptedInputs(target, inputMtimes, attemptDirs),
+    file: sourceRel, mtimeMs: sourceMtime, resolutions, failedInputs: attemptedInputs(target, inputMtimes, attemptDirs),
   } });
   let built;
   try {
@@ -1303,7 +1305,7 @@ export async function loadDistScreenHtml(target, screenId, { signal } = {}) {
   const all = !build || build.tool !== compilerStamp() || boardChanged;
   const result = readDistScreen(target.entryId, screenId);
   if (all || (invalid && result.kind !== 'error') || resolutionChanged || !source || (primary && source.file !== primary)
-    || [source, ...(source.deps || [])].some(changed) || !['ok', 'error'].includes(result.kind)) {
+    || [source, ...(source.deps || []), ...(source.failedInputs || [])].some(changed) || !['ok', 'error'].includes(result.kind)) {
     // 进入时满足输入就直接返回，否则只申请一次随后开始的 ticket，不追赶后继保存。
     const queued = pageCompilations.get(key);
     let task;
