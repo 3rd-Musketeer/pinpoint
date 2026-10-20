@@ -183,24 +183,21 @@ test('画布浮层：进入 140ms scale .985，退出 100ms；途中关闭从当
     await expect.poll(() => page.evaluate(() => document.querySelector('.ov-panel').getAnimations().every((a) => a.playState === 'finished'))).toBe(true);
     const closeBtn = await page.locator('#btn-canvas').boundingBox();
     expect(closeBtn.height).toBeGreaterThan(20);
-    const reversed = await page.evaluate(() => new Promise((resolve) => {
-      document.querySelector('#btn-canvas').addEventListener('click', () => {
-        const panel = document.querySelector('.ov-panel');
-        const sample = () => {
-          const live = panel.getAnimations().filter((a) => a.playState === 'running');
-          const opening = live.find((a) => a.effect.getTiming().duration === 140);
-          const at = getComputedStyle(panel).opacity;
-          if (!opening || Number(at) === 0) { requestAnimationFrame(sample); return; }
-          document.querySelector('[data-ov-close]').click();
-          requestAnimationFrame(() => {
-            const anim = panel.getAnimations().find((a) => a.playState === 'running');
-            resolve({ duration: anim.effect.getTiming().duration, start: anim.effect.getKeyframes()[0].opacity, opacity: at });
-          });
-        };
-        requestAnimationFrame(sample);
-      }, { once: true });
+    // 不定采样时刻（rAF 在负载下可能一跳就播完 140ms，或采样回调晚于 100ms 的反向动画 →
+    // evaluate 永不 resolve / 读到 undefined.effect）：把打开动画的播放速率压到近乎停住、
+    // 进度定在中点（playState 仍是 running——产品只给「还在跑的」从当前呈现值反向，
+    // pause 会被判成没在跑、从 1 走起），computed style 即途中呈现值，同一次调用里点关闭反向。
+    const reversed = await page.evaluate(() => {
       document.querySelector('#btn-canvas').click();
-    }));
+      const panel = document.querySelector('.ov-panel');
+      const opening = panel.getAnimations().at(-1);
+      opening.playbackRate = 0.01;
+      opening.currentTime = opening.effect.getTiming().duration / 2;
+      const opacity = getComputedStyle(panel).opacity;
+      document.querySelector('[data-ov-close]').click();
+      const anim = panel.getAnimations().filter((a) => a.playState === 'running').at(-1);
+      return { duration: anim.effect.getTiming().duration, start: anim.effect.getKeyframes()[0].opacity, opacity };
+    });
     expect(reversed.duration, JSON.stringify(reversed)).toBe(100);
     expect(Number(reversed.start), JSON.stringify(reversed)).toBeGreaterThan(0);
     expect(Number(reversed.start)).toBeLessThan(1);
