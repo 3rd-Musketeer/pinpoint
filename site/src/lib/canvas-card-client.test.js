@@ -165,3 +165,22 @@ test('sheetText：复合 :root（重写后不生效）展开为 null，整帧退
   // 注释原样留在产物里（判据自己剥注释扫描，不改写文本）。
   assert.equal(await settleWithin(sheetText(`${origin}kit.css`)), '/* :host 的 --wb-* token 归 wb-tokens.css，此处不再定义。 */ :host{--a:1}');
 });
+
+test('sheetText：@import 的子表瞬时失败作废该趟展开，下一张卡拿到完整展开（r4 review 建议 2）', async (t) => {
+  const origin = 'http://childfail.test/sites/demo_page/';
+  let childCalls = 0;
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    const key = url.replace(/[?&]direct$/, '');
+    if (key === `${origin}child.css`) {
+      childCalls += 1;
+      if (childCalls === 1) return { ok: false, status: 500, text: async () => '' };
+      return { ok: true, text: async () => '.child{color:blue}' };
+    }
+    return { ok: true, text: async () => `@import "./child.css"; .entry{color:red}` };
+  });
+  // 本次按空表（子表缺着，不回退 iframe），但缺子表的展开结果不进缓存。
+  assert.equal(await settleWithin(sheetText(`${origin}entry.css`)), '');
+  // 下一张卡重取：入口表原文还在缓存，子表重取成功，拿到完整展开。
+  assert.equal(await settleWithin(sheetText(`${origin}entry.css`)), '.child{color:blue} .entry{color:red}');
+  assert.equal(childCalls, 2);
+});

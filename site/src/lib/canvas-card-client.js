@@ -143,13 +143,12 @@ function rawCssStrict(url) {
   }
   return rawCssCache.get(url);
 }
-/** 内容视图：取不到按空表 —— iframe 里那条 <link> 失败同样没有样式，@import 的展开照常继续。 */
-const rawCss = (url) => rawCssStrict(url).catch(() => '');
-
 /**
  * <link> 指向的一张表展开成 constructed stylesheet 可用的文本。null：这张表展开不出合法 CSS
  * （@import 带 layer() / supports()、循环 import），引用它的帧退回 iframe（各帧各自退回）。
  * 入口表自己取不到时按空表兑现（不回退 iframe，与 <link> 失败一致），且这条失败不进缓存。
+ * @import 的子表取不到时同样按空表兑现、该趟展开作废不缓存（r4 review 建议 2）——
+ * 以「缺一张子表」的展开结果按入口表 URL 缓存，会把一次瞬时失败放大到全页会话。
  * 结果按 URL 缓存给后面的卡片：每个缓存项是从这张表起的一整趟展开，里面只等原文请求
  * （rawCss），从不等别的缓存项，所以不会互等。
  */
@@ -157,7 +156,10 @@ const sheetTextCache = new Map();
 export function sheetText(url) {
   if (!sheetTextCache.has(url)) {
     const pending = rawCssStrict(url).then(
-      (text) => cssFromText(text, url, [url]),
+      (text) => cssFromText(text, url, [url], rawCssStrict).catch(() => {
+        sheetTextCache.delete(url);
+        return '';
+      }),
       () => { sheetTextCache.delete(url); return ''; },
     );
     pending.catch(() => { if (sheetTextCache.get(url) === pending) sheetTextCache.delete(url); });
@@ -169,8 +171,8 @@ export function sheetText(url) {
 // @import 递归展开（constructed stylesheet 不许带 @import）后，url() 按本表自己的 base 改写、
 // :root 搬到 :host。被展开的文本已按自己的 base 处理过，外层再改写到绝对地址是空操作。
 // 复合 :root（.x:root、:root[data-theme]）重写后不生效：整帧退回 iframe，在那里原样求值。
-async function cssFromText(text, base, path) {
-  const out = await resolveCssImports(text, base, rawCss, path);
+async function cssFromText(text, base, path, fetchText) {
+  const out = await resolveCssImports(text, base, fetchText, path);
   if (out == null || rootCompoundHazard(out)) return null; // 展开不出合法 CSS：整帧退回 iframe
   return rewriteRootSelector(rewriteCssUrls(out, base));
 }
@@ -400,7 +402,7 @@ async function mountCard(host) {
     for (const el of doc.querySelectorAll('style, link[rel=stylesheet]')) {
       const cssText = el.tagName === 'LINK'
         ? await sheetText(new URL(el.getAttribute('href'), base).href)
-        : await cssFromText(el.textContent, base, []);
+        : await cssFromText(el.textContent, base, [], rawCssStrict);
       if (cssText == null) return fallbackFrame(host, box, { srcdoc: text, title }); // 展开不出合法 CSS
       sheets.push(sheetFor(cssText));
       if (el.closest('body')) variable.push(cssText); // 判据只扫帧自带的样式（head 是帧页固定 boilerplate）
