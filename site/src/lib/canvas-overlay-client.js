@@ -18,6 +18,23 @@ const SECTION_SETTLE_MS = 300;
 
 const ENTRY_SELECTOR = '[data-pp-frame-open], [data-pp-open], #btn-canvas, a[data-pp-canvas-link]';
 
+/**
+ * 卡片盒子算不算「已开始装」（预热门只等开始装了的盒子出结果）：
+ * 摆好 / 失败（data-fitted / data-failed）、shadow 帧排上了队（data-cc-started）、
+ * iframe 真的开始加载（非 lazy，或文档已离开 about:blank）。横着滚出 Chromium 懒加载
+ * 阈值的 doc 帧永远停在 about:blank（实测阈值 ~5400px，r5 T2）——只凭「DOM 里有 iframe」
+ * 算开始，预热门就永不打开，与上面声明的意图相反。
+ */
+export function boxStarted(box) {
+  if (box.dataset.fitted === '1' || box.dataset.failed === '1') return true;
+  if (box.querySelector('.cc-shadow[data-cc-started]')) return true;
+  const iframe = box.querySelector('iframe');
+  if (!iframe) return false;
+  if (iframe.getAttribute('loading') !== 'lazy') return true;
+  try { return !!iframe.contentDocument && iframe.contentDocument.URL !== 'about:blank'; }
+  catch { return true; }
+}
+
 export function initCanvasOverlay() {
   const dlg = document.querySelector('[data-pp-overlay]');
   const cards = [...document.querySelectorAll('[data-pp-canvas]')].filter((c) => c.dataset.page);
@@ -488,12 +505,8 @@ export function initCanvasOverlay() {
   function articleSettled() {
     const prose = document.querySelector('#article .prose');
     if (!prose || !prose.textContent.trim()) return false;
-    // 卡片帧有两种（E1）：静态帧挂在 .cc-shadow 的 shadow root 里（排上队写 data-cc-started），
-    // 其余是 iframe（HTML 帧、带脚本的回退帧）。两种摆好都写 box 的 data-fitted、失败写 data-failed，
-    // 并发同一个 pp:canvas-card-fitted（canvas-card-client.js cardSettled）。
     const boxes = cards.filter(inView).flatMap((card) => [...card.querySelectorAll('.cc-box')]);
-    const started = boxes.filter((box) => box.querySelector('iframe, .cc-shadow[data-cc-started]')
-      || box.dataset.fitted === '1' || box.dataset.failed === '1');
+    const started = boxes.filter(boxStarted);
     return started.every((box) => box.dataset.fitted === '1' || box.dataset.failed === '1');
   }
   function startPrewarm() {
