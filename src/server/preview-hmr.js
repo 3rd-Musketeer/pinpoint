@@ -25,6 +25,7 @@ import { findProject } from './lib/projects.js';
 import { projectEntries } from './lib/registry.js';
 import { isWatchedSource, planPageRecompile } from './lib/recompile-plan.js';
 import { templateOnly } from './template-only.js';
+import { broadcastPreviewUpdate } from './annotate-api.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 // previews 分支（M2）：模板页的 components/ 子目录（pp2 的核心输入）与任意
@@ -243,13 +244,14 @@ export default function previewHmr(options = {}) {
   }
 
   function notify(server, target, { fullReload = false, screens = null } = {}) {
+    const data = { id: target.entryId };
+    if (Array.isArray(screens)) data.screens = screens;
+    broadcastPreviewUpdate(data);
     if (fullReload) {
       server.ws.send({ type: 'full-reload' });
     } else {
       // F2/K3：增量编译只重编了几屏 → 带上屏清单，工作台按屏重摆；
       // 没带（整页重编 / 板变 / 无编译目标的通知）→ 工作台整板重摆。
-      const data = { id: target.entryId };
-      if (Array.isArray(screens)) data.screens = screens;
       server.ws.send({ type: 'custom', event: 'preview:update', data });
     }
   }
@@ -301,7 +303,7 @@ export default function previewHmr(options = {}) {
       if (/\/kits\/ios\/jsx\//.test(rel)) {
         return buildAllPages({ registry, root: ROOT, templateOnly: templateOnly(), ...(distRoot ? { distRoot } : {}) }).then((results) => {
           for (const result of results) {
-            server.ws.send({ type: 'custom', event: 'preview:update', data: { id: result.entryId } });
+            notify(server, { entryId: result.entryId });
           }
           return [];
         });

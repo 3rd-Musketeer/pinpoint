@@ -20,6 +20,7 @@ import { FrameDocError, figurePageHtml, framePageHtml, resolveFigureTarget, reso
 import { annotateInjection } from './lib/annotate-snippet.js';
 import { readBody, rejectWrite, sendCacheable, sendJson, sendMethodNotAllowed } from './lib/http-respond.js';
 import { defaultDistRoot, loadFigure, recordFigureRuntimeError } from './lib/page-compiler.js';
+import { requestSignal } from './lib/request-signal.js';
 
 const EMBEDS = new Set(['card', 'figure']);
 
@@ -118,6 +119,7 @@ export default function frameApi(options = {}) {
           await serveFigure(req, res, pageId, figureId, query.get('theme') || '');
           return;
         }
+        const lifetime = requestSignal(req, res);
         try {
           const target = resolveFrameTarget(pageId, screenId, { registry });
           // 注入判定走 annotateInjection（r2 D4 的归一入口）：?annotate=off 豁免、
@@ -133,14 +135,18 @@ export default function frameApi(options = {}) {
           }
           // 组装出的帧文档走策略表 frameHtml 行：no-cache + 最终字节的内容 ETag，
           // reload / HMR 重取时 304（审计 K6 建议 (a)）。
-          const body = Buffer.from(await framePageHtml(target, { annotate, embed }), 'utf8');
+          const body = Buffer.from(await framePageHtml(target, { annotate, embed, signal: lifetime.signal }), 'utf8');
+          if (lifetime.signal.aborted) return;
           sendCacheable(req, res, body, { policy: 'frameHtml', contentType: 'text/html; charset=utf-8' });
         } catch (error) {
+          if (lifetime.signal.aborted) return;
           if (error instanceof FrameDocError) {
             sendJson(res, error.code === 'bad_request' ? 400 : 404, { error: error.code, message: error.message });
             return;
           }
           sendJson(res, 500, { error: 'frame_failed', message: String((error && error.message) || error) });
+        } finally {
+          lifetime.dispose();
         }
       });
     },

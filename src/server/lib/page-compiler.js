@@ -38,6 +38,7 @@ import { listArticleTargets } from './page-resolve.js';
 import { readBoard } from './board-file.js';
 import { containedSource, requireSource, sourceBoundaryPlugin } from './compiler-source.js';
 import { sendCacheable } from './http-respond.js';
+import { requestSignal, waitForRequest } from './request-signal.js';
 import { resolveContainedFile } from './servable-file.js';
 import { screenEntries } from '../../shared/board-screens.js';
 import { flattenTabs } from '../../workbench/lib/board-tabs.js';
@@ -725,9 +726,15 @@ export function compilePage(target, options = {}) {
   if (options.writeDist === false) return compilePageNow(target, options);
   const key = compilationKey(target, options.distRoot || defaultDistRoot());
   const previous = pageCompilations.get(key);
-  const task = (previous || Promise.resolve()).catch(() => {}).then(() => compilePageNow(target, options));
-  pageCompilations.set(key, task);
-  const clear = () => { if (pageCompilations.get(key) === task) pageCompilations.delete(key); };
+  const job = { options: { ...options }, started: false, interests: [options.signal || null], promise: null };
+  const task = (previous?.promise || Promise.resolve()).catch(() => {}).then(() => {
+    if (job.interests.every((signal) => signal?.aborted)) throw new DOMException('请求已断开', 'AbortError');
+    job.started = true;
+    return compilePageNow(target, job.options);
+  });
+  job.promise = task;
+  pageCompilations.set(key, job);
+  const clear = () => { if (pageCompilations.get(key) === job) pageCompilations.delete(key); };
   task.then(clear, clear);
   return task;
 }
@@ -850,6 +857,8 @@ async function compilePageNow(target, options = {}) {
     figures,
     partial: Boolean(onlyScreens),
     totalScreens: ids.length,
+    // 请求返回此 ticket 的字节，不能等下一代写盘后再读 dist，把完成边界推向未来。
+    ...(options.includeFrames ? { frames: Object.fromEntries(picked.map((entry, i) => [entry.id, rows[i]])) } : {}),
   };
 }
 
@@ -1228,57 +1237,67 @@ export function screenIdFromRel(rel) {
  * 读一屏当前源码代次的 dist：等在飞编译，输入过期就按需重编后读取。
  * serve 层（500 上面板）与 /api/frame（500 frame_failed）共用同一条路。
  */
-export async function loadDistScreenHtml(target, screenId) {
+export async function loadDistScreenHtml(target, screenId, { signal } = {}) {
+  signal?.throwIfAborted();
   const distRoot = defaultDistRoot();
   const key = compilationKey(target, distRoot);
   const discard = () => fs.rmSync(path.join(distRoot, target.entryId, `${screenId}.html`), { force: true });
-  // 每次编译完成后才核对输入，不按时间轮询，也不依赖 watcher / Astro reload 的先后。
-  for (;;) {
-    const pending = pageCompilations.get(key);
-    if (pending) { await pending; continue; }
-    let entry;
-    let board;
-    let primary = null;
-    try {
-      board = readTargetBoard(target);
-      entry = screenEntriesFromBoard(board).find((item) => item.id === screenId);
-      if (!entry) throw new Error(`板里没有帧：${screenId}`);
-      // 当前源码的优先级也要查：不能只检查旧记录，遗漏新出现的 JSX / 本篇组件。
-      if (entry.src) {
-        if (!articleHtmlFrameFile(target, entry)) throw new Error(`源码不在登记根内或不存在：${screenId}`);
-      } else {
-        primary = entry.comp ? `components/${entry.comp}.jsx`
-          : fs.existsSync(path.join(target.pageDir, `${screenId}.jsx`)) ? `${screenId}.jsx` : `${screenId}.html`;
-        if (!entry.comp || fs.existsSync(path.join(target.pageDir, primary))) requireSource(target, primary);
-        else primary = null; // kit 组件没有本篇文件，由 source / deps 记录校验。
-      }
-    } catch (error) {
-      discard();
-      return { ok: false, error: error.message };
+  let entry;
+  let board;
+  let primary = null;
+  try {
+    board = readTargetBoard(target);
+    entry = screenEntriesFromBoard(board).find((item) => item.id === screenId);
+    if (!entry) throw new Error(`板里没有帧：${screenId}`);
+    // 当前源码的优先级也要查：不能只检查旧记录，遗漏新出现的 JSX / 本篇组件。
+    if (entry.src) {
+      if (!articleHtmlFrameFile(target, entry)) throw new Error(`源码不在登记根内或不存在：${screenId}`);
+    } else {
+      primary = entry.comp ? `components/${entry.comp}.jsx`
+        : fs.existsSync(path.join(target.pageDir, `${screenId}.jsx`)) ? `${screenId}.jsx` : `${screenId}.html`;
+      if (!entry.comp || fs.existsSync(path.join(target.pageDir, primary))) requireSource(target, primary);
+      else primary = null; // kit 组件没有本篇文件，由 source / deps 记录校验。
     }
-    const build = readBuildJson(distRoot, target.entryId);
-    const source = build?.sources?.[screenId];
-    const roots = [...COMPILER_ROOTS, ...Object.values(target.sources || {})];
-    const invalid = source && [source, ...(source.deps || [])].some((record) => !containedSource(target, record.file, roots).file);
-    const changed = (record) => {
-      try { return fs.statSync(path.resolve(target.pageDir, record.file)).mtimeMs !== record.mtimeMs; }
-      catch { return true; }
-    };
-    // builtAt 是整页最后一拍的时间，增量编译别帧会刷新它；逐项对比输入代次才能守住本帧。
-    const boardChanged = target.kind === 'article'
-      ? JSON.stringify(readDistBoard(distRoot, target.entryId)) !== JSON.stringify(board)
-      : build?.boardMtimeMs !== fs.statSync(path.join(target.pageDir, 'board.json')).mtimeMs;
-    const all = !build || build.tool !== compilerStamp() || boardChanged;
-    const result = readDistScreen(target.entryId, screenId);
-    if (all || invalid || !source || (primary && source.file !== primary)
-      || [source, ...(source.deps || [])].some(changed) || result.kind !== 'ok') {
-      const compiled = await compilePage(target, all ? {} : { onlyScreen: screenId });
-      const failed = compiled.screens.find((row) => row.id === screenId && !row.ok);
-      if (compiled.error || failed) return { ok: false, error: compiled.error || failed.error };
-      continue; // 编译期间又保存过的输入，继续编新一代；没有变动直接读。
-    }
-    return { ok: true, html: result.html };
+  } catch (error) {
+    discard();
+    return { ok: false, error: error.message };
   }
+  const build = readBuildJson(distRoot, target.entryId);
+  const source = build?.sources?.[screenId];
+  const roots = [...COMPILER_ROOTS, ...Object.values(target.sources || {})];
+  const invalid = source && [source, ...(source.deps || [])].some((record) => !containedSource(target, record.file, roots).file);
+  const changed = (record) => {
+    try { return fs.statSync(path.resolve(target.pageDir, record.file)).mtimeMs !== record.mtimeMs; }
+    catch { return true; }
+  };
+  // builtAt 是整页最后一拍的时间，增量编译别帧会刷新它；逐项对比输入代次才能守住本帧。
+  const boardChanged = target.kind === 'article'
+    ? JSON.stringify(readDistBoard(distRoot, target.entryId)) !== JSON.stringify(board)
+    : build?.boardMtimeMs !== fs.statSync(path.join(target.pageDir, 'board.json')).mtimeMs;
+  const all = !build || build.tool !== compilerStamp() || boardChanged;
+  const result = readDistScreen(target.entryId, screenId);
+  if (all || invalid || !source || (primary && source.file !== primary)
+    || [source, ...(source.deps || [])].some(changed) || result.kind !== 'ok') {
+    // 进入时满足输入就直接返回，否则只申请一次随后开始的 ticket，不追赶后继保存。
+    const queued = pageCompilations.get(key);
+    let task;
+    if (queued && !queued.started) {
+      const opts = queued.options;
+      const selected = opts.onlyScreen ? [opts.onlyScreen] : opts.onlyScreens;
+      if (all || !selected) { delete opts.onlyScreen; delete opts.onlyScreens; }
+      else { delete opts.onlyScreen; opts.onlyScreens = [...new Set([...selected, screenId])]; }
+      opts.includeFrames = true;
+      queued.interests.push(signal || null);
+      task = queued.promise;
+    } else {
+      task = compilePage(target, { ...(all ? {} : { onlyScreen: screenId }), includeFrames: true, signal });
+    }
+    const compiled = await waitForRequest(task, signal);
+    if (compiled.error) return { ok: false, error: compiled.error };
+    const frame = compiled.frames?.[screenId];
+    return frame?.ok ? { ok: true, html: frame.html } : { ok: false, error: frame?.error || '板里没有帧：' + screenId };
+  }
+  return { ok: true, html: result.html };
 }
 
 /**
@@ -1290,7 +1309,17 @@ export async function loadDistScreenHtml(target, screenId) {
  * reload / HMR 重取时 304——ETag 是最终字节的哈希，重编后内容一变必然 200 新内容。
  */
 export async function serveDistScreenResponse(req, res, target, screenId, { inject = null } = {}) {
-  const result = await loadDistScreenHtml(target, screenId);
+  const lifetime = requestSignal(req, res);
+  let result;
+  try {
+    result = await loadDistScreenHtml(target, screenId, { signal: lifetime.signal });
+    if (lifetime.signal.aborted) return true;
+  } catch (error) {
+    if (lifetime.signal.aborted) return true;
+    throw error;
+  } finally {
+    lifetime.dispose();
+  }
   if (result.ok) {
     let body = Buffer.from(result.html, 'utf8');
     if (inject) body = Buffer.from(inject(body.toString('utf8')), 'utf8');

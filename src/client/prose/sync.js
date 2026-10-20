@@ -166,6 +166,12 @@ export function createProseSync(opts) {
         canvas.remote(doc);
       }
     });
+    es.addEventListener('preview:update', function (ev) {
+      if (es !== events) return;
+      var data;
+      try { data = JSON.parse(ev.data); } catch { return; }
+      if (data?.id === ENTRY) document.dispatchEvent(new CustomEvent('pp:preview-update', { detail: data }));
+    });
   }
 
   function closeEvents() {

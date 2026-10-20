@@ -104,6 +104,14 @@ function broadcastAnnotations(doc, entryId) {
   }
 }
 
+// 文章已有 /events 连接；转发与工作台同一次编译完成信号，不另建定时拉取链。
+export function broadcastPreviewUpdate(data) {
+  const chunk = `event: preview:update\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of sseClients) {
+    try { res.write(chunk); } catch { sseClients.delete(res); }
+  }
+}
+
 function handleSse(req, res) {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',

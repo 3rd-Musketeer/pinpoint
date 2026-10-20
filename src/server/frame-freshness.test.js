@@ -41,11 +41,13 @@ function fixture(t) {
   const target = resolvePageTarget('demo_flow', { registry });
   let middleware;
   frameApi({ registry }).configureServer({ middlewares: { use(fn) { middleware = fn; } } });
-  const request = async (screen, embed = 'card', headers = {}) => {
+  const request = async (screen, embed = 'card', headers = {}, control = () => {}) => {
     const req = mockReq('GET', `/api/frame?page=demo_flow&screen=${screen}${embed ? `&embed=${embed}` : ''}&annotate=off`);
     req.headers = headers;
     const res = mockRes();
-    await middleware(req, res, () => assert.fail('应由帧 API 响应'));
+    const pending = middleware(req, res, () => assert.fail('应由帧 API 响应'));
+    control(req, res);
+    await pending;
     return res;
   };
   return { article, target, write, request };
@@ -67,6 +69,36 @@ test('文章嵌入帧：请求抢在 watcher 前、条件请求与稍后懒加�
   assert.match((await request('later')).text, /稍后修订稿/, '此前未挂载的卡片首取也须是新稿');
   write('home.jsx', 'export default function Home() { return <div className="ios-app">独立嵌入修订稿</div>; }');
   assert.match((await request('home', '')).text, /独立嵌入修订稿/, '不带 embed 的嵌入端点走同一保证');
+});
+
+test('R1：连续保存时只满足请求进入时的目标，不追赶发布之后的新保存', async (t) => {
+  const { target, write, request } = fixture(t);
+  await compilePage(target);
+  write('home.jsx', 'export default function Home() { return <div className="ios-app">请求目标稿</div>; }');
+  const original = fs.writeFileSync;
+  let publishes = 0;
+  const probe = t.mock.method(fs, 'writeFileSync', function (file, ...args) {
+    const result = original.call(this, file, ...args);
+    if (String(file).endsWith('/dist/demo_flow/home.html') && ++publishes < 6) {
+      write('home.jsx', `export default function Home() { return <div className="ios-app">后继稿 ${publishes}</div>; }`);
+    }
+    return result;
+  });
+  const response = await request('home');
+  probe.mock.restore();
+  assert.equal(publishes, 1, '第一次满足目标就出帧；后继保存由编译完成通知推进');
+  assert.ok(response.text.includes('请求目标稿'));
+});
+
+test('R1：断连只结束自身等待，既有编译继续，断连请求不发布额外编译或写响应', async (t) => {
+  const { target, request } = fixture(t);
+  let finished = false;
+  const compiling = compilePage(target).then(() => { finished = true; });
+  const response = await request('home', 'card', {}, (req) => req.emit('aborted'));
+  assert.equal(finished, false, '不能等既有编译完成才处理断连');
+  assert.equal(response.writableEnded, false, '断连后不发送 500 或旧帧');
+  await compiling;
+  assert.equal((await request('home')).statusCode, 200, '取消不破坏其他消费者的编译');
 });
 
 test('文章嵌入帧：在飞编译读完旧稿后再保存，请求必须等最新代且旧编译不能覆盖', async (t) => {

@@ -181,10 +181,10 @@ function docUrlForScreen(screen, baseUrl) {
 /** fragment 屏内容：dist（页内 board 屏）或磁盘（src 屏）读取 →
     机壳包装（与画布同一份 lib）。
     编译失败的屏抛普通 Error —— frame-api 落 500 frame_failed 带错误文本。 */
-export async function assembleFrameContent(target) {
+export async function assembleFrameContent(target, options = {}) {
   let raw;
   if (target.distTarget) {
-    const dist = await loadDistScreenHtml(target.distTarget, target.screenId);
+    const dist = await loadDistScreenHtml(target.distTarget, target.screenId, options);
     if (!dist.ok) throw new Error(dist.error);
     raw = dist.html;
   } else {
@@ -296,7 +296,7 @@ export async function framePageHtml(target, opts = {}) {
   const annotate = opts.annotate !== false && !embed;
   // 预览脚本惰性化：完整文档里原生 <script> 会立刻执行（root 未定义），契约执行
   // 权交给 client/frame-boot.js（与画布 innerHTML 不执行语义对齐）。
-  const content = neutralizePreviewScripts(await assembleFrameContent(target));
+  const content = neutralizePreviewScripts(await assembleFrameContent(target, opts));
   const wrapped = embed ? markEmbedStage(content) : content;
   const frameIdentity = {
     pageId: target.pageId,

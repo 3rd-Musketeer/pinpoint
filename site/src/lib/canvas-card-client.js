@@ -426,26 +426,45 @@ async function mountCard(host) {
 // 而 Chrome 的懒加载 iframe 不看中间滚动容器的裁剪（a6d8d98 基线实测：被裁的帧照样加载）。
 // 这里按 boundingClientRect（忽略裁剪）判断距离，与懒加载 iframe 的实际行为对齐。
 function initStaticCards() {
-  const hosts = [...document.querySelectorAll('.cc-shadow[data-cc-src]')];
-  if (!hosts.length) return;
+  const states = [...document.querySelectorAll('.cc-shadow[data-cc-src]')].map(host => ({
+    host, template: host.cloneNode(true), fig: host.closest('.cc-frame'), box: host.parentElement,
+    running: false, settled: false, dirty: false,
+  }));
+  if (!states.length) return;
   let active = 0;
   const pending = [];
+  const reset = (state) => {
+    if (state.host.shadowRoot) tickRoots.delete(state.host.shadowRoot);
+    state.host = state.template.cloneNode(true);
+    state.box.replaceChildren(state.host);
+    delete state.box.dataset.fitted;
+    delete state.box.dataset.failed;
+    state.settled = state.dirty = false;
+  };
   const pump = () => {
     while (active < 6 && pending.length) {
+      const state = pending.shift();
       active++;
-      mountCard(pending.shift()).finally(() => { active--; pump(); });
+      state.running = true;
+      mountCard(state.host).finally(() => {
+        active--;
+        state.running = false;
+        state.settled = true;
+        // 在飞时的完成信号只记一笔，当前挂载结束后再取；旧响应不能盖住后继代。
+        if (state.dirty) { reset(state); check(); }
+        pump();
+      });
     }
   };
-  // 加载距离与 iframe 的 loading=lazy 同义，取 Chromium 各网络档位里的最大档（8000px）：
-  // 旧实现里首屏之外的卡片帧（如短文章的第二张卡）不滚动也会加载，这里对齐这个行为。
-  const MARGIN = 8000;
+  const MARGIN = 8000; // 与 Chromium 懒加载 iframe 的最大距离一致，仍忽略中间容器的裁剪。
   const check = () => {
-    for (const host of hosts) {
+    for (const state of states) {
+      const host = state.host;
       if (host.dataset.ccStarted || !host.isConnected) continue;
       const r = host.getBoundingClientRect();
       if (r.bottom >= -MARGIN && r.top <= innerHeight + MARGIN && r.right >= -MARGIN && r.left <= innerWidth + MARGIN) {
         host.dataset.ccStarted = '1';
-        pending.push(host);
+        pending.push(state);
       }
     }
     pump();
@@ -458,6 +477,18 @@ function initStaticCards() {
   };
   document.addEventListener('scroll', onScroll, { passive: true, capture: true });
   addEventListener('resize', onScroll);
+  document.addEventListener('pp:preview-update', ({ detail }) => {
+    rawCssCache.clear();
+    sheetTextCache.clear();
+    for (const state of states) {
+      if (state.fig.closest('[data-page]')?.dataset.page !== detail.id
+        || (detail.screens && !detail.screens.includes(state.fig.dataset.screen))) continue;
+      if (state.running) state.dirty = true;
+      else if (state.settled) reset(state);
+      // 尚未加载的卡片不提前请求，首取自然满足新的输入代次。
+    }
+    check();
+  });
   check();
 }
 
