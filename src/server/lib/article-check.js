@@ -30,7 +30,7 @@ import { resolveServableFile } from './servable-file.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { checkMdxRender } from './mdx-check.js';
 import { deriveArticleBoard } from './article-board.js';
-import { compileFigure, figureFiles, frameDiagnostics } from './page-compiler.js';
+import { compileFigure, figureFiles, frameDiagnostics, renderScreenHtml } from './page-compiler.js';
 import { resolveArticleTarget } from './page-resolve.js';
 import { listProjects } from './projects.js';
 
@@ -136,6 +136,35 @@ function htmlFrameDiagnostics({ file, root }, { address, section, frame }) {
   ];
 }
 
+/** doc 机壳的帧文件写法：`export const shell = "doc"`（与 lint 认的同一行）。 */
+const FRAME_SHELL_DOC = /export const shell\s*=\s*["']doc["']/;
+
+/**
+ * R5 S3（诊断缺口）：ios 帧的同名 sidecar `<帧 id>.js` 只在帧根标了
+ * data-preview-mount（board-schema「交互 frame」B 形态）或帧里有显式的
+ * data-preview-script 时才被装载；doc 机壳的屏由 wb-doc-surface 隐式探，
+ * 不用标。写了 sidecar 却两条都不占，画布静默无交互——check 此前全绿。
+ * 只查 JSX 帧：HTML 帧套 app 机壳时的装载面是另一条（R5 B2 刚动过），不在这里猜。
+ */
+async function sidecarMountHint(target, frame, section, { address }) {
+  if (!isFile(path.join(target.pageDir, `${frame}.js`))) return [];
+  const source = readText(path.join(target.pageDir, `${frame}.jsx`));
+  if (source === null || FRAME_SHELL_DOC.test(source)) return [];
+  if ((section && section.shell) === 'doc') return [];
+  const rendered = await renderScreenHtml(target, frame);
+  if (!rendered.ok) return []; // 编译错误另有诊断，不拿渲染产物说事
+  if (/data-preview-mount/.test(rendered.html) || /data-preview-script/.test(rendered.html)) return [];
+  return [{
+    severity: 'warning',
+    code: 'sidecar_no_mount',
+    file: path.join(target.pageDir, `${frame}.js`),
+    message: '同名 sidecar 存在，但帧里没有挂载点：帧根要标 data-preview-mount（board-schema「交互 frame」B 形态；doc 机壳的屏才隐式探 <帧 id>.js）。这个 sidecar 现在在画布上不会执行。',
+    article: address,
+    ...(section && section.id ? { section: section.id } : {}),
+    frame,
+  }];
+}
+
 /** 一篇文章：帧、正文渲染、空 ref 的诊断（布局错误另由 checkProject 给）。 */
 async function checkArticle({ registry, project, article, resolve, layoutErrors, frameCache }) {
   const address = `${project.id}/${article.id}`;
@@ -155,6 +184,7 @@ async function checkArticle({ registry, project, article, resolve, layoutErrors,
       }
       if (!target || !isFile(path.join(target.pageDir, `${frame}.jsx`))) continue; // 缺帧是布局错误
       frames += 1;
+      diagnostics.push(...await sidecarMountHint(target, frame, section, { address }));
       const result = await frameDiagnostics(target, frame);
       for (const row of result.diagnostics) {
         const key = `${row.code}|${row.file}|${row.line}|${row.message}`;

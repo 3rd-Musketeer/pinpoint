@@ -519,3 +519,38 @@ test('{ id, src } 帧写在 shell="app" 的节里：出帧目标从 dist 出（R
   write(path.join(article, 'index.mdx'), mdx.replace(' shell="app"', ''));
   assert.equal(resolveFrameTarget(pageId, 'cat', { registry }).kind, 'doc');
 });
+
+test('sidecar 挂载点警告（R5 S3）：同名 .js 没有挂载点报 sidecar_no_mount，标了或 doc 机壳不报', async (t) => {
+  const { article, registry } = fixture(t);
+  write(path.join(article, 'index.mdx'), [
+    '---', 'title: 页面', '---', '',
+    '<Section id="live" title="活的">', '', '<Canvas frames={["counter"]} />', '', '</Section>', '',
+    '<Section id="marked" title="标了的">', '', '<Canvas frames={["marked"]} />', '', '</Section>', '',
+    '<Section id="docshell" title="doc 机壳">', '', '<Canvas frames={["docframe"]} />', '', '</Section>', '',
+  ].join('\n'));
+  const jsx = (marker) => [
+    `export default function Frame() {`,
+    `  return <div className="ios-app"${marker}>计数</div>;`,
+    `}`,
+    '',
+  ].join('\n');
+  write(path.join(article, 'counter.jsx'), jsx(''));
+  write(path.join(article, 'counter.js'), 'export function mount(root) { root.textContent = "0"; }\n');
+  write(path.join(article, 'marked.jsx'), jsx(' data-preview-mount'));
+  write(path.join(article, 'marked.js'), 'export default function mount(root) { root.textContent = "0"; }\n');
+  write(path.join(article, 'docframe.jsx'), 'export const shell = "doc";\nexport default function Frame() {\n  return <div className="ios-app">文档</div>;\n}\n');
+  write(path.join(article, 'docframe.js'), 'export default function mount(root) { root.textContent = "0"; }\n');
+  const report = await checkProject(registry, 'demo', { articleId: 'pages' });
+  const hints = report.diagnostics.filter((row) => row.code === 'sidecar_no_mount');
+  assert.equal(hints.length, 1, JSON.stringify(report.diagnostics, null, 1));
+  assert.equal(hints[0].severity, 'warning');
+  assert.equal(hints[0].frame, 'counter');
+  assert.match(hints[0].message, /data-preview-mount/);
+  assert.ok(!report.diagnostics.some((row) => row.code === 'sidecar_no_mount' && row.frame !== 'counter'),
+    '标了挂载点的与 doc 机壳的（含帧级 shell="doc"）不报');
+  // section 写 shell="doc" 时同样豁免。
+  write(path.join(article, 'index.mdx'),
+    '---\ntitle: 页面\n---\n\n<Section id="live" title="活的" shell="doc">\n\n<Canvas frames={["counter"]} />\n\n</Section>\n');
+  const docSection = await checkProject(registry, 'demo', { articleId: 'pages' });
+  assert.ok(!docSection.diagnostics.some((row) => row.code === 'sidecar_no_mount'));
+});
