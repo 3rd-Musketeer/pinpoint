@@ -1,22 +1,8 @@
-// Workbench 屏幕装配簇 — 屏幕 HTML 拉取（pp2：dist）、壳装配、整板 HTML。
-// P1a 从 workbench.js 平移（goal-20260810-workbench-react-rebuild）：零行为变化。
-// P2：screen 拉取迁入 TanStack Query（app/query-client.js），失效由 SSE 桥的
-// invalidateQueries 驱动。
-// 2026-08-15 图纸图注（decisions 08-15）：frame 上方两行（mono 引用号 accent +
-// 屏名 .wb-cap-title），尺寸行 .wb-screen-dim 在 frame 下方居中（仅手机机身 frame，
-// 402 × 874 = iPhone 16 Pro 逻辑分辨率，钉值对齐 kits/ios/ios-kit.css）；引用号
-// 纯派生自画布视图（src/workbench/lib/board-refs.js，doc 屏在那里被滤掉），
-// 不落盘。doc 屏不上画布、不套图注（阅读器态由 index.html [data-page-mode="html"]
-// 规则隐藏图注语汇）。
-// 2026-08-16f 阶段 6（产物与草稿模型）：壳分派只看 screen.shell（validateBoard
-// 已按页 defaultShell 归一完毕），不再回查 page.mode —— 同一板里 app/lock 屏摆
-// 画布、doc 屏成阅读器条目（选中后由 pages.js setActiveEntry 切 stage 形态与显隐）。
-// 2026-09-05 视口（lib/viewport.js）：buildBoardHtml 多收 options.viewport —— 手机视口
-// 下 doc 屏不套阅读器壳，套一块不带状态栏 / 岛 / home 条的手机屏（wrapDocPhoneShell），
-// iframe 402 × 874 是真实布局尺寸，媒体查询与排版就是手机的；整块屏由 pages.js
-// syncPhoneDocScale 按舞台高缩放、居中，不上画布（owner：「html doc 的手机视图就
-// 不需要画布了，直接就是一个自适应大小（大约 viewport 高度 90%）的手机 screen，
-// 不需要状态栏和灵动岛；在画布上容易乱跑」）。
+// Workbench 屏幕装配簇 — 屏幕 HTML 拉取（TanStack Query，SSE 失效）、壳装配、
+// 整板 HTML 与图注（引用号纯派生自 lib/board-refs.js，doc 屏不进引用体系）。
+// 壳分派只看 screen.shell（validateBoard 已按页 defaultShell 归一）；手机视口下
+// doc 屏不套阅读器壳，套一块 402 × 874 的手机屏（wrapDocPhoneShell，真实布局
+// 尺寸），整块屏由 pages.js syncPhoneDocScale 缩放居中、不上画布。
 import { wbGet } from './app/store.js';
 import { queryClient } from './app/query-client.js';
 import { escHtml } from '../shared/esc-html.js';
@@ -58,15 +44,6 @@ export function loadFailHtml(info) {
       '<button type="button" class="wb-screen-err-act"' + attrs + '>重试</button>' +
     '</div>' +
     '</div>';
-}
-
-function screenErrorHtml(pageId, screenId, err) {
-  return loadFailHtml({
-    title: '加载失败',
-    source: pageId + '/' + screenId,
-    reason: String(err),
-    retry: { kind: 'screen', pageId: pageId, screenId: screenId }
-  });
 }
 
 function docFrameHtml(url, title) {
@@ -225,7 +202,12 @@ export function screenContentHtml(pageId, sc, res, viewport) {
   if (res && res.ok) {
     return wrapScreenShell(pageId, res.html, sc.shell, viewport);
   }
-  return screenErrorHtml(pageId, sc.id, res ? res.err : 'missing');
+  return loadFailHtml({
+    title: '加载失败',
+    source: pageId + '/' + sc.id,
+    reason: String(res ? res.err : 'missing'),
+    retry: { kind: 'screen', pageId: pageId, screenId: sc.id }
+  });
 }
 
 export function buildBoardHtml(pageId, board, screenMap, options) {

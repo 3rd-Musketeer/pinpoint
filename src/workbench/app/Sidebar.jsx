@@ -1,59 +1,17 @@
-// 侧栏整树（P1b cut2，goal-20260810-workbench-react-rebuild）— head（连接状态 +
-// 折叠钮）、Pages 段（单一页面列表）、设置视图壳。2026-10-10 起大纲不在左栏，
-// 画在页 tab 条的浮层里（app/OutlinePopover.jsx）。原 index.html 静态标记 +
-// pages.js/boot-prefs.js 手工 DOM 同步的 React 形态；DOM id / class / 文案与
-// 原实现逐一对应（e2e 选择器即契约）。
-// 状态全部来自 app/store.js；交互回调仍调 pages.js / boot-prefs.js 的命令式动作
-// （页面装载、条目切换、偏好保存的命令式副作用留在那些模块，本文件只做渲染与转发）。
-//
-// V2 换皮（goal-20260811-workbench-visual-rebuild）：侧栏 chrome 全量收编 shadcn
-// 复制件 + Tailwind 类，配方照 V1 基准（SettingsView / app/Seg.jsx 头注释）。
-//
-// 2026-08-15 侧栏重构（decisions 08-14 左右分工 + 08-15c 大纲延伸线）：
-//  - 左栏 = 页面上下文：head（连接状态 + 齿轮进设置视图 + 收起）→ Pages → 大纲；
-//    标注区迁出为独立右栏；2026-09-04 右栏取消常驻，改为横条计数钮弹出的
-//    列表（app/AnnPopover.jsx）。
-//  - 段头改静态（mock 无折叠 affordance），sectionOpen 机制随 Annotations 段退役。
-//
-// 2026-08-16 阶段 2（Web 退役 + Pages 统一）：模式 Seg（iOS/Web/HTML）退役，
-// Pages 变单一列表（本地页 + registry dir 条目同列）。
-// 2026-08-16f 阶段 7（产物与草稿模型，decisions 08-16f，ROADMAP 阶段 7）：
-//  - Page 去类型化：Page 行只剩标题 + hover copy 钮（壳标 pill / data-page-mode
-//    随本阶段删除）；类型信息下移到产物条目的 tag。
-//  - 左栏第二层 = 「内容」区（Contents）：产物组（画布条目 + 文档条目，各带
-//    mono 类型 tag）+ 草稿组（role=draft 条目，纯标题行，无 tag——草稿恒为整页
-//    HTML）。DocVersions 层级退役：多屏 doc 拆成扁平条目。
-//  - 画布条目的 frame 树收编旧大纲组件（不再是独立 section）：选中画布条目时树
-//    挂在画布条目行下；纯画布页不出条目行、树直接挂区头下。树的交互（点击定位
-//    frame + 机身 flash 环、计数徽标、失效红、与标注卡焦点双向同步）全部保留，
-//    延伸线几何 CSS 仍在 index.html（.wb-outline 系）。
-//  - 坍缩规则（lib/board-entries.js contentsModel）：纯单 doc 屏页整区不出现；
-//    混合页条目行全出。
-// 2026-08-17 行级动作收编右键菜单（owner 决定）：Pages 行 / 条目行 / frame
-// 树行的 locator 复制、页面重命名统一进 app/row-menu.jsx 的右键
-// 菜单；行尾 hover 钮（copy / 导出 icon）退役，行宽全部还给标题，窄栏也不再
-// 有行尾元素被裁切的面。菜单项 data 契约：data-copy-page / data-copy-frame /
-// data-rename-page（e2e 选择器）。
-// 2026-08-17g（Pages 时间与排序）：PageRow 行尾出内容 mtime 的相对时间
-// （lib/page-sort.js formatRelativeTime；无 mtime 的页不出）；Pages 段头右侧
-// 排序菜单提供依据与方向的组合选项（lib/page-sort.js，持久化 prefs.pageSort）。
-//
-// 2026-09-04 切片 ②（外壳重设计的左栏内容，评审板 C1 + ADR 0031/0032）：
-//  - head 第一眼是产品名与搜索，不是「已连接」：wordmark + 连接小点（状态只剩
-//    颜色与 tooltip）+ 齿轮，下面一格搜索框（⌘K 聚焦，打字即筛，Esc 清空）。
-//  - 「最近」段（本地记录五条）在「页面」段之上，行尾是打开时刻的相对时间。
-//  - 「页面」段按排序菜单的档位列出全部页（lib/page-sort.js）。
-//  - 行语言统一成 .wb-row（几何与皮肤在 index.html）：页面行行首一个类型图标
-//    （画布 / 文档，映射在 lib/page-groups.js）；行尾 11 mono。
-//  - 模板页（Component Library / Example Library / Example HTML）默认不显示，
-//    开关在预览设置；当前页是模板页时它照旧显示，否则选中态没有落点。
-//  - footer 的预览 Light/Dark 搬进预览设置（改名「预览主题」），footer 随之取消。
-//
-// 2026-10-10：大纲离开左栏。产物 / 草稿条目和 frame 树改由页 tab 条上的浮层打开
-// （app/OutlinePopover.jsx）。左栏 icon tab 只剩「页面 / 已归档」。
-//
-// 2026-10-13（pp3，owner 选 A）：「页面」tab 顶上加一组「文章」（app/ArticlesSection.jsx，
-// project → 文章）；原来的置顶、最近与页面列表原样搬进下面的「页面」组。
+// 侧栏整树 — head（wordmark + 连接小点 + 齿轮进设置视图）、「页面 / 已归档」
+// 两个 icon tab、页面上下文（最近 + 置顶 + 页面列表，pp3 起「文章」组在最上，
+// app/ArticlesSection.jsx）。产物 / 草稿条目与 frame 树不在左栏：画在页 tab 条的
+// 大纲浮层里（app/OutlinePopover.jsx）；标注列表在横条计数钮的弹出卡
+// （app/AnnPopover.jsx）。状态全部来自 app/store.js；交互回调仍调 pages.js /
+// boot-prefs.js 的命令式动作（页面装载、条目切换、偏好保存的副作用留在那些
+// 模块，本文件只做渲染与转发）。
+// 契约：DOM id / class / 文案是 e2e 选择器（#wbconn、#wbgear、#wbpages、
+// data-vpage、data-copy-page / data-rename-page 等），改前先 grep e2e。
+// 行语言：.wb-row（几何与皮肤在 index.html），行首类型图标映射在
+// lib/page-groups.js，行尾相对时间与排序档在 lib/page-sort.js（2026-08-17g，
+// 持久化 prefs.pageSort）；页面重命名 / 复制 / 置顶 / 归档统一走 app/row-menu.jsx
+// 的右键菜单（行宽全部还给标题）。模板页默认不显示（预览设置里有开关），
+// 当前页是模板页时照旧显示，否则选中态没有落点。
 import { emitServerEvent, setServerEventsOnline } from '../server-events.js';
 import { registerEmbedPark } from '../embed-park.js';
 import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
