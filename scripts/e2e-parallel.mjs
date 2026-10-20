@@ -67,13 +67,16 @@ const durations = {
   'wiki-panel.spec.js': 4.3,
   'workbench.spec.js': 56.1,
 };
-// 会拉起文章站点（真 Astro 开发服务器）的 spec 放在同一组：每轮只冷启动一次（约 4 s），
+// 重度依赖文章站点（真 Astro 开发服务器）的 spec 放在同一组：每轮只冷启动一次（约 4 s），
 // 也不会有两个 Astro 同时在跑。2026-10-13 集成那一轮，prose-comments 的 SSE 断线一步
 // 首跑失败，trace 里站点在那一步中途重启（文章 503 → 500 → 整页重载）；当时另一组也有
 // 自己的 Astro，两者共用 site/.astro/。原因没钉死，同组跑先把这层重叠去掉。
 // 之后每个站点进程有了自己的 Astro root（site/.astro-cache/<端口>/，astro.config.mjs），不再共用
 // 内容库；同组仍省一次冷启动。
 // article-site 要看到“站点还没拉起过”，按文件名它在这一组里排第一个。
+// 注：lightweight 开几篇文章页的 spec（canvas-overlay-motion、rail-align、ledger-rail、
+// toc-entry、wiki-panel、layer-stack 等）不在此列——它们会在自己那组把该组的站点拉起来，
+// 各组站点有自己的 cache root，互不影响（2026-10-20 核对）。
 const SITE_SPECS = ['article-site.spec.js', 'article-source.spec.js', 'article-updates.spec.js', 'article-viewer.spec.js', 'figure.spec.js', 'html-frames.spec.js', 'overlay-escape.spec.js', 'owner-flows.spec.js', 'owner-performance.spec.js', 'ppnt-article.spec.js', 'prose-comments.spec.js', 'sidebar-content.spec.js'];
 // 按表贪心分两组：时长降序，依次放进当前总时长更短的那组；SITE_SPECS 合成一块一起放
 // （2026-09-24 之前是手排 first 集合，workbench 长出来后第一组独大约 73%）。
