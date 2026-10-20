@@ -153,6 +153,8 @@ test('sheetText：复合 :root（重写后不生效）展开为 null，整帧退
   const texts = new Map([
     [`${origin}theme.css`, ':root[data-theme="dark"]{--c:black} .card{color:var(--c)}'],
     [`${origin}compound.css`, '.x:root{y:2}'],
+    // 注释里提到 :root 不算复合：kit 样式的头注释就有它，误判会让整页卡片全部回退。
+    [`${origin}kit.css`, '/* :root 的 --wb-* token 归 wb-tokens.css，此处不再定义。 */ :root{--a:1}'],
   ]);
   t.mock.method(globalThis, 'fetch', async (url) => {
     const key = url.replace(/[?&]direct$/, '');
@@ -160,4 +162,6 @@ test('sheetText：复合 :root（重写后不生效）展开为 null，整帧退
   });
   assert.equal(await settleWithin(sheetText(`${origin}theme.css`)), null);
   assert.equal(await settleWithin(sheetText(`${origin}compound.css`)), null);
+  // 注释原样留在产物里（判据自己剥注释扫描，不改写文本）。
+  assert.equal(await settleWithin(sheetText(`${origin}kit.css`)), '/* :host 的 --wb-* token 归 wb-tokens.css，此处不再定义。 */ :host{--a:1}');
 });

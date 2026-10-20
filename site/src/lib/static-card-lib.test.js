@@ -67,7 +67,8 @@ test('rootCompoundHazard：复合或带祖先的 :root 命中（重写后不生�
     'a, .x:root{y:2}',
     ':not(:root){y:2}',
   ]) assert.equal(rootCompoundHazard(css), true, css);
-  // 不命中：单独的 :root（选择器开始）与 :rootish 单词。
+  // 不命中：单独的 :root（选择器开始）、:rootish 单词，以及注释里的 :root 字样
+  //（kit 样式头注释就有它，判据先剥注释，cssHazard 同一口径）。
   for (const css of [
     ':root{--a:1}',
     ':root .x{y:2}',
@@ -75,6 +76,7 @@ test('rootCompoundHazard：复合或带祖先的 :root 命中（重写后不生�
     'a, :root{--a:1}',
     '\n:root{\n  --a:1\n}',
     '.rooty{a:1}',
+    '/* :root[data-theme] 的变体在 :root 上，这里只是注释 */ :root{--a:1}',
   ]) assert.equal(rootCompoundHazard(css), false, css);
 });
 

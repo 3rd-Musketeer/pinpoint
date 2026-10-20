@@ -63,10 +63,11 @@ export const rewriteRootSelector = (cssText) => String(cssText).replace(/:root\b
  * :root 出现在复合选择器或带祖先的选择器里（.x:root、:root[data-theme]、.x :root、:not(:root)）。
  * 这类选择器重写成 :host 后不生效（.x:host、:host[data-theme] 实测规则保留但匹配不到东西），
  * shadow 里也没有对应写法（正确形态是 :host(.x) / :host([…])，另一套写法）。命中返回 true，
- * 调用方整帧退回 iframe：iframe 里 :root 按文档求值，原样可用。
+ * 调用方整帧退回 iframe：iframe 里 :root 按文档求值，原样可用。注释先剥掉：kit 样式的
+ * 头注释里就有「:root」字样（cssHazard 同一个先剥注释的口径）。
  */
 export function rootCompoundHazard(cssText) {
-  const css = String(cssText || '');
+  const css = String(cssText || '').replace(CSS_COMMENT, '');
   for (const m of css.matchAll(/:root\b/g)) {
     const before = css.slice(0, m.index).trimEnd().slice(-1);
     if (before && !['{', ',', '}'].includes(before)) return true; // 前面还有选择器（同复合或祖先）
