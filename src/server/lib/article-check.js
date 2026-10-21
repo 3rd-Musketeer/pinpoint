@@ -214,14 +214,15 @@ async function checkArticle({ registry, project, article, resolve, layoutErrors,
       // 产物。编译失败不拿失败的产物说事。
       const result = await compileScreenChecked(target, frame);
       const shells = boardScreens ? boardScreens.get(frame) : null;
+      // shellChecked 同时是机壳契约与 sidecar 提示的门：只在帧级 shell 为 app / lock
+      // （或两个都没写、按缺省 app）时才拿产物说话。comp、doc、只写了节级 shell 的
+      // 帧产物不进这两条诊断——sidecar 的 html 传 null，与并成一次编译之前一致。
       const shellChecked = result.ok && shells && !shells.src
         && (shells.frameShell ? shells.frameShell !== 'comp' && shells.frameShell !== 'doc' : !shells.sectionShell);
       if (shellChecked && !IOS_SHELL_RE.test(result.html)) {
         diagnostics.push(frameShellDiagnostic(frame, section, { address, pageDir: target.pageDir }));
       }
-      const sidecarChecked = result.ok && shells && !shells.src
-        && !(shells.frameShell === 'doc' || (!shells.frameShell && shells.sectionShell === 'doc'));
-      diagnostics.push(...sidecarMountHint(target, frame, section, { address, html: sidecarChecked ? result.html : null }));
+      diagnostics.push(...sidecarMountHint(target, frame, section, { address, html: shellChecked ? result.html : null }));
       for (const row of result.diagnostics) {
         const key = `${row.code}|${row.file}|${row.line}|${row.message}`;
         // 几帧共用的组件只报一次。
