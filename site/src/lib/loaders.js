@@ -13,16 +13,25 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { serialize } from 'node:v8';
 import { loadProjects } from './projects-source.js';
 import { namespaceErrors } from '../../../src/shared/refs.js';
 import { projectErrorLine } from './site-errors.js';
 
 const posix = (p) => p.split(path.sep).join('/');
 
-// 先完成异步读取与校验，再同步替换集合；请求不会读到只装了一半的路由表。
-function replaceEntries(store, entries) {
-  store.clear();
-  for (const entry of entries) store.set(entry);
+// 先完成异步读取与校验、所有 digest，再在同一同步段提交；请求不会读到半集合。
+function replaceEntries(ctx, entries) {
+  // Astro 只比较 digest，忽略其他字段。覆盖完整待写条目（含原 contents digest），
+  // 不比较 Astro 已规范化的 stored data。V8 序列化保留 Date/undefined 等类型，
+  // 避免 JSON 把 Date 与同值字符串合并；不保留第二份长期快照。
+  const next = entries.map((entry) => ({
+    ...entry,
+    digest: ctx.generateDigest(serialize(entry).toString('base64')),
+  }));
+  const ids = new Set(next.map((entry) => entry.id));
+  for (const id of ctx.store.keys()) if (!ids.has(id)) ctx.store.delete(id);
+  for (const entry of next) ctx.store.set(entry);
 }
 
 export function watchAll(ctx, source, reload) {
@@ -99,7 +108,7 @@ export function projectsLoader() {
           const data = await ctx.parseData({ id: p.id, data: { id: p.id, title: p.title, root: p.root, dir: p.dir, errors } });
           entries.push({ id: p.id, data });
         }
-        replaceEntries(ctx.store, entries);
+        replaceEntries(ctx, entries);
         return source;
       };
       const source = await run();
@@ -150,7 +159,7 @@ export function articlesLoader() {
             }
           }
         }
-        replaceEntries(ctx.store, entries);
+        replaceEntries(ctx, entries);
         return source;
       };
       const source = await run();
@@ -195,7 +204,7 @@ export function conceptsLoader() {
             }
           }
         }
-        replaceEntries(ctx.store, entries);
+        replaceEntries(ctx, entries);
         return source;
       };
       const source = await run();

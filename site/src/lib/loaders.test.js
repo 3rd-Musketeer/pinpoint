@@ -7,7 +7,34 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import mdx from '@astrojs/mdx';
-import { articlesLoader, conceptsLoader, watchAll } from './loaders.js';
+import { articlesLoader, conceptsLoader, projectsLoader, watchAll } from './loaders.js';
+
+// 从实际安装的 Astro 入口定位，不复制 scopedStore 的 digest/规范化实现。
+const { MutableDataStore } = await import(new URL('content/mutable-data-store.js', import.meta.resolve('astro')));
+function storeProbe(name) {
+  const writes = [];
+  class ObservedStore extends MutableDataStore {
+    set(...args) { writes.push('set'); return super.set(...args); }
+    clear(...args) { writes.push('clear'); return super.clear(...args); }
+    delete(...args) { writes.push('delete'); return super.delete(...args); }
+    addAssetImports(...args) { writes.push('assets'); return super.addAssetImports(...args); }
+    addModuleImport(...args) { writes.push('modules'); return super.addModuleImport(...args); }
+  }
+  const store = new ObservedStore().scopedStore(name);
+  const outcomes = [];
+  const set = store.set;
+  store.set = (entry) => { const changed = set(entry); outcomes.push(changed); return changed; };
+  return { store, writes, outcomes, reset() { writes.length = 0; outcomes.length = 0; } };
+}
+
+// track 在同步提交之后被调用；微任务时已完成整个批次，不依赖 clear 或固定等待。
+function reloadWatcher() {
+  const watcher = new EventEmitter();
+  let committed = () => {};
+  watcher.add = () => queueMicrotask(() => committed());
+  watcher.reload = (event, file) => new Promise((resolve) => { committed = resolve; watcher.emit(event, file); });
+  return watcher;
+}
 
 // watchAll 是站点内容重读的唯一入口：登记表或 project 目录一变就重读。这里用假 watcher 和假“磁盘”
 // 摆出 2026-10-15 满载下的两种时序（docs/debugging.md 同日案例）：
@@ -61,27 +88,30 @@ test('articlesLoader：异步重读保留快照，坏 YAML 只影响本篇，修
     fs.writeFileSync(file, `---\ntitle: ${id}\n---\n正文 ${id}`);
     return file;
   });
+  const frame = path.join(path.dirname(files[0]), 'frame.jsx');
+  fs.writeFileSync(frame, 'export default () => <div>旧帧正文</div>');
   const registry = path.join(root, 'registry.json');
   fs.writeFileSync(registry, JSON.stringify({ version: 1, entries: [{ id: 'loader', kind: 'project', path: root }] }));
   process.env.PINPOINT_REGISTRY = registry;
   let parser;
   await mdx().hooks['astro:config:setup']({ config: {}, updateConfig() {}, addPageExtension() {}, addContentEntryType(type) { parser = type; }, addRenderer() {} });
-  const entries = new Map();
+  const probe = storeProbe('articles');
+  const entries = probe.store;
   const errors = [];
-  let committed = () => {};
-  const watcher = new EventEmitter();
-  watcher.add = () => {};
+  const watcher = reloadWatcher();
   let gate;
   let entered;
   const ctx = {
     config: { root: pathToFileURL(root + '/') }, watcher,
     entryTypes: new Map([['.mdx', { getEntryInfo: async (input) => { if (gate) { entered(); await gate; } return parser.getEntryInfo(input); } }]]),
-    store: { clear: () => { entries.clear(); queueMicrotask(() => committed()); }, set: (entry) => entries.set(entry.id, entry) },
+    store: entries,
     parseData: async ({ data }) => data, generateDigest: (text) => text,
     logger: { error: (message) => errors.push(message), warn: (message) => errors.push(message) },
   };
   await articlesLoader().load(ctx);
-  const reload = (event, file) => new Promise((resolve) => { committed = resolve; watcher.emit(event, file); });
+  const reload = watcher.reload;
+  const original = entries.get('loader/a');
+  probe.reset();
   let release;
   gate = new Promise((resolve) => { release = resolve; });
   const started = new Promise((resolve) => { entered = resolve; });
@@ -93,6 +123,28 @@ test('articlesLoader：异步重读保留快照，坏 YAML 只影响本篇，修
   release();
   await finished;
   assert.deepEqual(during, ['loader/a', 'loader/b']);
+  assert.strictEqual(entries.get('loader/a'), original, '不变重读应复用实际 stored entry');
+  assert.deepEqual(probe.outcomes, [false, false]);
+  assert.deepEqual(probe.writes, [], '不进入 Astro 底层 set/clear/delete 或 assets/modules 脏路径');
+
+  fs.writeFileSync(frame, 'export default () => <div>新帧正文</div>');
+  probe.reset();
+  await reload('change', frame);
+  assert.strictEqual(entries.get('loader/a'), original, '纯帧正文事件不重建 MDX entry');
+  assert.deepEqual(probe.outcomes, [false, false]);
+  assert.deepEqual(probe.writes, []);
+
+  const contents = fs.readFileSync(files[0], 'utf8');
+  const nextTime = new Date(fs.statSync(files[0]).mtimeMs + 2000);
+  fs.utimesSync(files[0], nextTime, nextTime);
+  await reload('change', files[0]);
+  assert.equal(fs.readFileSync(files[0], 'utf8'), contents);
+  assert.notStrictEqual(entries.get('loader/a'), original, '同正文但 mtime 改变仍采用');
+  assert.equal(entries.get('loader/a').data.mtimeMs, fs.statSync(files[0]).mtimeMs);
+
+  ctx.parseData = async ({ data }) => ({ ...data, derived: '新派生值' });
+  await reload('change', frame);
+  assert.equal(entries.get('loader/a').data.derived, '新派生值');
 
   fs.writeFileSync(files[0], '---\ntitle: [\n---\n正文 a');
   await reload('change', files[0]);
@@ -100,6 +152,11 @@ test('articlesLoader：异步重读保留快照，坏 YAML 只影响本篇，修
   assert.match(entries.get('loader/a')?.data.loadError || '', /articles[/\\]a[/\\]index.mdx/);
   assert.equal(entries.get('loader/a').deferredRender, undefined, '坏文件不能交给 Astro 编译');
   assert.ok(errors.some((message) => message.includes(files[0])));
+  const broken = entries.get('loader/a');
+  probe.reset();
+  await reload('change', frame);
+  assert.strictEqual(entries.get('loader/a'), broken, '错误 entry 也应有稳定 digest');
+  assert.deepEqual(probe.writes, []);
 
   // 冷启动也能载入健康文章，不依赖旧快照。
   entries.clear();
@@ -113,6 +170,10 @@ test('articlesLoader：异步重读保留快照，坏 YAML 只影响本篇，修
   fs.rmSync(path.dirname(files[0]), { recursive: true });
   await reload('unlink', files[0]);
   assert.deepEqual([...entries.keys()], ['loader/b']);
+  fs.mkdirSync(path.dirname(files[0]));
+  fs.writeFileSync(files[0], '---\ntitle: 新增\n---\n新增正文');
+  await reload('add', files[0]);
+  assert.equal(entries.get('loader/a').data.title, '新增');
 });
 /** 把挂着的重读从新到旧放行，直到不再有新的重读：交叠时新的先结束、旧的后结束（满载下观察到的顺序）。 */
 async function drain(runs) {
@@ -216,7 +277,7 @@ test('watchAll：登记 alias 根（symlink）时，真实路径形态的 change
   assert.equal(runs, siblingBefore);
 });
 
-test('conceptsLoader：wiki 正文 render 失败保留路由并带 renderError，页面有得显示（r5 T5）', async (t) => {
+test('concepts/projectsLoader：复用不变条目，wiki render 失败与恢复、渲染变化和 project 布局删增仍更新', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-concepts-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const pin = path.join(dir, 'wt', 'docs', 'pinpoint');
@@ -229,29 +290,69 @@ test('conceptsLoader：wiki 正文 render 失败保留路由并带 renderError�
   t.after(() => { if (prevRegistry === undefined) delete process.env.PINPOINT_REGISTRY; else process.env.PINPOINT_REGISTRY = prevRegistry; });
   fs.writeFileSync(process.env.PINPOINT_REGISTRY, JSON.stringify({ version: 1, entries: [{ id: 'wt', kind: 'project', path: path.join(dir, 'wt') }] }));
 
-  const store = { entries: [], clear() { this.entries = []; }, set(e) { this.entries.push(e); } };
+  const probe = storeProbe('concepts');
+  const store = probe.store;
   const errors = [];
+  let broken = true;
+  let html = '<p>好的词条。</p>';
   const ctx = {
-    watcher: null,
+    watcher: reloadWatcher(),
     config: { root: pathToFileURL(path.join(dir, 'site')) },
     logger: { error: (message) => errors.push(message), warn: () => {} },
     store,
     parseData: async ({ data }) => data,
-    generateDigest: () => 'd0',
+    generateDigest: (text) => text,
     entryTypes: new Map([['.md', {
       getEntryInfo: async ({ contents }) => ({ body: contents, data: {} }),
       getRenderFunction: async () => async (entry) => {
-        if (entry.filePath.endsWith('broken.md')) throw new Error('render boom');
-        return { html: '<p>好的词条。</p>' };
+        if (broken && entry.filePath.endsWith('broken.md')) throw new Error('render boom');
+        return { html };
       },
     }]]),
   };
   await conceptsLoader().load(ctx);
-  const bySlug = new Map(store.entries.map((e) => [e.id, e]));
+  const bySlug = new Map(store.entries());
   assert.equal(bySlug.get('wt/ok').rendered.html, '<p>好的词条。</p>');
   assert.equal(bySlug.get('wt/ok').data.renderError, undefined);
   // 坏的保留路由（页面还在），错误进 entry 数据让页面亮出来，而不是静默没正文。
   assert.equal(bySlug.get('wt/broken').rendered, undefined);
   assert.match(bySlug.get('wt/broken').data.renderError, /broken\.md: render boom/);
   assert.ok(errors.some((m) => m.includes('broken.md')), '服务端日志仍要有一行');
+  probe.reset();
+  const frame = path.join(pin, 'frame.jsx');
+  await ctx.watcher.reload('change', frame);
+  assert.strictEqual(store.get('wt/ok'), bySlug.get('wt/ok'));
+  assert.strictEqual(store.get('wt/broken'), bySlug.get('wt/broken'));
+  assert.deepEqual(probe.outcomes, [false, false]);
+  assert.deepEqual(probe.writes, []);
+  broken = false;
+  await ctx.watcher.reload('change', frame);
+  assert.equal(store.get('wt/broken').data.renderError, undefined, '正文不变，renderError 仍可恢复');
+  assert.equal(store.get('wt/broken').rendered.html, html);
+  assert.strictEqual(store.get('wt/ok'), bySlug.get('wt/ok'));
+  html = '<p>新的渲染结果</p>';
+  await ctx.watcher.reload('change', frame);
+  assert.equal(store.get('wt/ok').rendered.html, html, '正文不变，渲染结果变化仍采用');
+
+  const projectProbe = storeProbe('projects');
+  const projectCtx = { ...ctx, store: projectProbe.store, watcher: reloadWatcher() };
+  await projectsLoader().load(projectCtx);
+  const project = projectCtx.store.get('wt');
+  projectProbe.reset();
+  await projectCtx.watcher.reload('change', frame);
+  assert.strictEqual(projectCtx.store.get('wt'), project);
+  assert.deepEqual(projectProbe.outcomes, [false]);
+  assert.deepEqual(projectProbe.writes, []);
+  // 新出现的布局错误属于派生 data，不能被不变 project.json 的 digest 遮掉。
+  const badLayout = path.join(pin, 'articles', 'stray.txt');
+  fs.mkdirSync(path.dirname(badLayout), { recursive: true });
+  fs.writeFileSync(badLayout, '布局错误');
+  await projectCtx.watcher.reload('add', badLayout);
+  assert.ok(projectCtx.store.get('wt').data.errors.some((e) => e.code === 'article_not_dir'));
+  fs.rmSync(badLayout);
+  await projectCtx.watcher.reload('unlink', badLayout);
+  assert.deepEqual(projectCtx.store.get('wt').data.errors, project.data.errors);
+  fs.writeFileSync(process.env.PINPOINT_REGISTRY, JSON.stringify({ version: 1, entries: [] }));
+  await projectCtx.watcher.reload('change', process.env.PINPOINT_REGISTRY);
+  assert.deepEqual(projectCtx.store.keys(), [], '空集合删除所有缺席 project');
 });
