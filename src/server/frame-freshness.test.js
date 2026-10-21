@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -7,7 +8,7 @@ import { EventEmitter } from 'node:events';
 
 import frameApi from './frame-api.js';
 import { resolvePageTarget } from './lib/board-source.js';
-import { compilePage, loadDistScreenHtml, readDistScreen } from './lib/page-compiler.js';
+import { compilePage, defaultDistRoot, loadDistScreenHtml, readBuildJson, readDistScreen } from './lib/page-compiler.js';
 import { loadRegistry } from './lib/registry.js';
 import { mockReq, mockRes } from './test-harness.js';
 
@@ -143,21 +144,37 @@ test('文章嵌入帧：在飞编译读完旧稿后再保存，请求必须等�
 test('文章嵌入帧：依赖在 esbuild 读完后改变，不能把旧 HTML 记成新依赖的产物', async (t) => {
   const { target, write, request } = fixture(t);
   write('home.jsx', 'import Label from "./components/Label.jsx"; export default function Home() { return <div className="ios-app"><Label /></div>; }');
-  const dependency = write('components/Label.jsx', 'export default function Label() { return <p>依赖初稿</p>; }');
+  const initialSource = 'export default function Label() { return <p>依赖初稿</p>; }';
+  const dependency = write('components/Label.jsx', initialSource);
+  const realDependency = fs.realpathSync(dependency);
+  const initialMtime = fs.statSync(realDependency).mtimeMs;
   const read = fs.readFileSync;
   let intercepted = false;
+  let consumedBytes;
   const probe = t.mock.method(fs, 'readFileSync', function (file, ...args) {
-    const text = read.call(this, file, ...args);
-    // esbuild 由原生进程读文件；Node 第一次读这个组件是打包后的 lint。
-    if (String(file) === dependency && !intercepted) {
+    const contents = read.call(this, file, ...args);
+    // onLoad 用 realpath 读取 Buffer；读出初稿后保存修订稿，仍把这份旧 bytes 交给 esbuild。
+    if (String(file) === realDependency && !intercepted) {
       intercepted = true;
+      consumedBytes = contents;
       write('components/Label.jsx', 'export default function Label() { return <p>依赖修订稿</p>; }');
     }
-    return text;
+    return contents;
   });
-  await compilePage(target);
+  assert.equal((await compilePage(target)).ok, true);
   probe.mock.restore();
   assert.ok(intercepted);
+  assert.ok(Buffer.isBuffer(consumedBytes), '须命中真实 onLoad 的同份 Buffer 读取');
+  assert.equal(consumedBytes.toString('utf8'), initialSource);
+  const initialHtml = readDistScreen(target.entryId, 'home').html;
+  assert.match(initialHtml, /依赖初稿/);
+  assert.doesNotMatch(initialHtml, /依赖修订稿/);
+  const record = readBuildJson(defaultDistRoot(), target.entryId).sources.home.deps.find(dep => dep.file === 'components/Label.jsx');
+  assert.ok(record);
+  assert.equal(record.realpath, realDependency);
+  assert.equal(record.sha256, createHash('sha256').update(consumedBytes).digest('hex'), '初稿 HTML 只能认实际读入的初稿 bytes');
+  assert.equal(record.mtimeMs, initialMtime);
+  assert.notEqual(record.mtimeMs, fs.statSync(realDependency).mtimeMs, '修订稿代次尚未被初稿 HTML 消费');
   assert.ok((await request('home')).text.includes('依赖修订稿'), '记录必须反映编译读入的依赖代次');
 });
 
