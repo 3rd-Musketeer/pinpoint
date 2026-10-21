@@ -88,6 +88,48 @@ test('409 retry 的成功应答把规范化 open、回复和编号采用到 mark
   assert.equal(requests.length, 2, '采用应答本身不触发额外保存');
 });
 
+for (const inflightEdit of [false, true]) {
+  test(`ack 认号同步打开 composer 的闭包原对象并保留未提交草稿（在途 merge=${inflightEdit}）`, async t => {
+    const { ctx, requests, reply, cached } = setup(t, [
+      row('a', { status: 'open' }), row('b', { n: 2, status: 'open' }),
+    ]);
+    const m = ctx.marks[0]; // 新建第一次自动保存后，commit 已把 m 放进 marks 并置 isNew=false。
+    const composer = {
+      m, isNew: false, ta: { value: m.content },
+      // 与 composer-open 一致：getter 闭包读取原 m，换 composer.m 也不能更新它。
+      get persistedN() { return this.isNew ? null : m.n; },
+    };
+    ctx.activeComposer = composer;
+    setBase([]);
+    requestSync();
+    assert.equal(composer.persistedN, 1);
+    composer.ta.value = '继续输入但尚未 autosave';
+    m._draft = '未提交目标草稿';
+    m.targets = [{ ref: 'i1', selector: '#draft', text: '草稿目标' }];
+    const draftBefore = copy(m);
+    if (inflightEdit) {
+      ctx.marks[1].content = '另一条在途编辑';
+      persist();
+    }
+    await reply(0, { revision: 2, annotations: [
+      row('a', { n: 8, status: 'open' }), row('b', { n: 9, status: 'open' }),
+    ] });
+    const saved = ctx.marks.find(mark => mark.id === m.id);
+    assert.equal(saved.n, 8);
+    assert.equal(composer.persistedN, saved.n, '列表完成的编号必须命中当前 composer guard');
+    assert.equal(composer.m, m, '保持 commit/getter 的闭包身份');
+    assert.equal(ctx.activeComposer, composer, '认号不强关框');
+    assert.deepEqual(m, { ...draftBefore, n: 8 }, '只同步编号，不覆盖未提交草稿字段');
+    assert.equal(composer.ta.value, '继续输入但尚未 autosave');
+    assert.equal(cached().find(mark => mark.id === m.id).n, 8);
+    assert.equal(requests.length, inflightEdit ? 2 : 1, '认号不自行触发新保存');
+    if (inflightEdit) {
+      assert.equal(requests[1].body.baseRevision, 2);
+      assert.equal(requests[1].body.annotations.find(mark => mark.id === m.id).n, 8);
+    }
+  });
+}
+
 test('以实际发送的深快照保留在途正文和嵌套目标编辑，下一次保存用 ack revision', async t => {
   const { ctx, requests, reply } = setup(t, [row('a', {
     targets: [{ ref: 'i1', selector: '#one', text: '原目标' }],

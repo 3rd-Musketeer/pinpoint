@@ -64,6 +64,13 @@ function adoptServerNumbers(data) {
     var m = ctx.marks[j];
     if (serverN[m.id] !== undefined && serverN[m.id] !== m.n) { m.n = serverN[m.id]; changed = true; }
   }
+  // ack 采用会换掉 marks 行，但打开框的 getter / commit 仍闭包引用原 m。
+  // 只同步同 id 的编号，保留原对象及尚未 commit 的正文、目标等草稿。
+  var openMark = ctx.activeComposer && ctx.activeComposer.m;
+  if (openMark && serverN[openMark.id] !== undefined && serverN[openMark.id] !== openMark.n) {
+    openMark.n = serverN[openMark.id];
+    changed = true;
+  }
   if (!changed) return;
   ctx.structureDirty = true;
   renderLedgerChange();
