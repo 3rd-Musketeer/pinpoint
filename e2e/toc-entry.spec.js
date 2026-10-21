@@ -69,47 +69,41 @@ test('窄屏目录入口：1024 与 390 都能跳节，标题不藏在顶栏下'
         await page.evaluate(() => { scrollTo(0, 400); scrollTo(0, 0); });
         await expect(entry(page).locator('[data-toc-pos]')).toHaveText('1 / 4');
       });
+
+      if (width === 390) {
+        await test.step('键盘打开目录：焦点落在当前项，Tab 还在目录里', async () => {
+          await page.emulateMedia({ reducedMotion: 'no-preference' });
+          await entry(page).locator('[data-toc-toggle]').focus();
+          await page.keyboard.press('Enter');
+          await expect(pop(page).locator('#toc a.on')).toBeFocused();
+          await page.keyboard.press('Tab');
+          expect(await page.evaluate(() => !!document.activeElement.closest('[data-toc-nav]'))).toBe(true);
+        });
+      }
     });
   }
 });
 
-test('窄屏开关目录再切回宽屏，目录不透明', async ({ page }) => {
+test('窄屏开关目录再切回宽屏，目录不透明且没有窄屏入口', async ({ page }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1024, height: 768 });
   await openArticle(page);
   await entry(page).locator('[data-toc-toggle]').click();
   await page.keyboard.press('Escape');
   await expect(entry(page).locator('[data-toc-toggle]')).toHaveAttribute('aria-expanded', 'false');
-  await page.setViewportSize({ width: 1440, height: 900 });
-  const nav = await pop(page).evaluate((el) => {
-    const box = el.getBoundingClientRect();
-    return { opacity: getComputedStyle(el).opacity, width: box.width, height: box.height };
+
+  await test.step('切回宽屏：目录恢复不透明，窄屏入口消失', async () => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const nav = await pop(page).evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      return { opacity: getComputedStyle(el).opacity, width: box.width, height: box.height };
+    });
+    expect(nav.opacity).toBe('1');
+    expect(nav.width).toBeGreaterThan(100);
+    expect(nav.height).toBeGreaterThan(40);
+    await expect(entry(page)).toBeHidden();
+    await expect(pop(page).locator('#toc a')).toHaveCount(4);
   });
-  expect(nav.opacity).toBe('1');
-  expect(nav.width).toBeGreaterThan(100);
-  expect(nav.height).toBeGreaterThan(40);
-});
-
-test('键盘打开目录：焦点落在当前项，Tab 还在目录里', async ({ page }) => {
-  test.setTimeout(180_000);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await openArticle(page);
-  await entry(page).locator('[data-toc-toggle]').focus();
-  await page.keyboard.press('Enter');
-  await expect(pop(page).locator('#toc a.on')).toBeFocused();
-  await page.keyboard.press('Tab');
-  expect(await page.evaluate(() => !!document.activeElement.closest('[data-toc-nav]'))).toBe(true);
-});
-
-test('宽屏没有目录入口，目录栏还在', async ({ page }) => {
-  test.setTimeout(180_000);
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await openArticle(page);
-  await expect(entry(page)).toBeHidden();
-  await expect(pop(page).locator('#toc a')).toHaveCount(4);
-  const nav = await pop(page).boundingBox();
-  expect(nav).not.toBeNull();
-  expect(nav.width).toBeGreaterThan(100);
 });
 
 test('目录 popover：打开 120ms、4px 位移；减少动态效果只淡入', async ({ page }) => {
