@@ -989,3 +989,22 @@ export default function F(){return <div>{data.text}{ts}<View />{js}{mjs}{cjs.tex
   assert.equal(failed.ok, false);
   assert.match(failed.screens[0].error, /typed\.ts:1:/);
 });
+
+test('完成信号：缺板认证的部分编译不能把相同失败重试当成新版板反复发布', async (t) => {
+  const { subscribePageCompilations } = await import('./page-compiler.js');
+  const target = makePage('repeat-error-publication', { board: BASIC_BOARD, files: { 'home.jsx': 'export default function F(){return <div>v1</div>}' } });
+  const distRoot = path.join(tmp, 'dist');
+  assert.equal((await compilePage(target, { distRoot })).ok, true);
+  const buildFile = distFile(target, 'build.json');
+  const build = JSON.parse(fs.readFileSync(buildFile));
+  delete build.boardInput;
+  fs.writeFileSync(buildFile, JSON.stringify(build));
+  fs.writeFileSync(path.join(target.pageDir, 'home.jsx'), 'export default function Broken(){return <broken ');
+  const updates = [];
+  const unsubscribe = subscribePageCompilations(distRoot, update => updates.push(update));
+  t.after(unsubscribe);
+  assert.equal((await compilePage(target, { distRoot, onlyScreen: 'home' })).ok, false);
+  assert.equal(updates.length, 1, '新错误须发布');
+  assert.equal((await compilePage(target, { distRoot, onlyScreen: 'home' })).ok, false);
+  assert.equal(updates.length, 1, '未认证的板未真正发布，不重复触发错误拉取');
+});

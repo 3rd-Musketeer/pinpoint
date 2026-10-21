@@ -942,8 +942,9 @@ async function compilePageNow(target, options = {}) {
       errors: mergedErrors,
     }, null, 2) + '\n');
     // 产物和输入账目都已发布才驱动消费者；相同错误的重试不广播，避免拉取重试环。
-    if (listeners && (boardChanged || updated.length)) for (const listener of [...listeners]) {
-      try { listener({ target, screens: onlyScreens && !boardChanged ? updated : null, fullReload }); }
+    const boardPublished = boardChanged && (target.kind === 'article' || boardInput);
+    if (listeners && (boardPublished || updated.length)) for (const listener of [...listeners]) {
+      try { listener({ target, screens: onlyScreens && !boardPublished ? updated : null, fullReload }); }
       catch (error) { console.error(`[pp2] 编译完成通知 ${target.entryId} 异常：${error?.message || error}`); }
     }
   }
