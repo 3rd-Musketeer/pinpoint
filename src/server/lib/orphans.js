@@ -149,7 +149,9 @@ export function collectOrphanCounts({ entries, dataRoot, localIds, root, article
       pageId,
       dataRoot,
       entries,
-      isManifestPage: localIds.includes(pageId),
+      // resolvePage 的优先级：registry 条目在先。同名时是条目页，不因为 manifest
+      // 里也有这个 id 就给它一块 /previews/ 表面（与 loadPageContext 同一规则）。
+      isManifestPage: !entries.some((entry) => entry && entry.id === pageId) && localIds.includes(pageId),
       previewsRoot,
       article: articles.get(pageId) || null,
       ledgers,

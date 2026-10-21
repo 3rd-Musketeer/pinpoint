@@ -189,6 +189,17 @@ test('registry 与 manifest 同名时条目优先：指向 /previews/ 的账本�
   assert.deepEqual(ctx.orphanRows, []);
 });
 
+test('内容为 null 的账本当空账本：不抛，其余账本照常', () => {
+  const site = makeSite();
+  fs.writeFileSync(path.join(site.dataRoot, 'demo-page', 'nulldoc~1.json'), 'null');
+  const registryFile = path.join(tmp, 'registry.json');
+  fs.writeFileSync(registryFile, JSON.stringify({ version: 1, entries: [{ id: 'demo-page', kind: 'dir', path: site.pageDir }] }));
+  const ctx = loadPageContext({ pageRef: 'demo-page', registryPath: registryFile, root: tmp, dataRootDir: site.dataRoot });
+  assert.equal(ctx.frameRows.length, 4, '@canvas 的行还在');
+  assert.deepEqual(ctx.orphanLedgers, []);
+  assert.deepEqual(ctx.orphanRows, []);
+});
+
 describe('anchorComp', () => {
   test('帧根不算、内层组件算', () => {
     const tree = parseHtmlFragment(distFor('home'));

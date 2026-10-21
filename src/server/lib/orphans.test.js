@@ -117,6 +117,16 @@ test('collectOrphanCounts：按已知页计数（口径 = 行数，K7）；未�
   assert.equal(after['site-a'], 3, '一本孤儿账本按行数计');
 });
 
+test('collectOrphanCounts：registry 与 manifest 同名时按条目页计，不挂 /previews/ 表面', (t) => {
+  const { root, dataRoot, entries } = withFixture(t);
+  writeLedger(path.join(dataRoot, 'site-a'), 'previews~site-a~missing.json', {
+    page: 'previews~site-a~missing', path: '/previews/site-a/missing.html', annotations: [{ id: 'a' }],
+  });
+  const counts = collectOrphanCounts({ entries, dataRoot, localIds: ['site-a', 'tpl-page'], root });
+  assert.equal(counts['site-a'], 0, '同名的 dir 页不是模板页，这本账本不判孤儿');
+  assert.equal(counts['tpl-page'], 0);
+});
+
 test('ledgerIsOrphan：目录 URL 回落 index.html；穿越路径是孤儿', (t) => {
   const { dataRoot, siteDir, previewsRoot, entries } = withFixture(t);
   fs.writeFileSync(path.join(siteDir, 'index.html'), '<!doctype html><p>home</p>');

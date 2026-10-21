@@ -64,7 +64,7 @@ function rowsOfLedgers(ledgers) {
   for (const { name, doc } of ledgers) {
     const rows = Array.isArray(doc && doc.annotations) ? doc.annotations : [];
     const ledger = name.replace(/\.json$/, '');
-    const docPath = typeof doc.path === 'string' ? doc.path : '';
+    const docPath = typeof (doc && doc.path) === 'string' ? doc.path : '';
     for (const row of rows) {
       const normalized = normalizeAnnotation(row);
       if (!normalized || typeof normalized !== 'object') continue;
@@ -175,7 +175,7 @@ function contextWithRows({ registry, repoRoot, dataRootValue, pageId, target, bo
   const ledgerOfRow = orphanLedgerById(ledgers, orphanNames);
   const orphanRows = ledgers
     .filter((ledger) => orphanNames.has(ledger.name))
-    .flatMap((ledger) => (Array.isArray(ledger.doc.annotations) ? ledger.doc.annotations : [])
+    .flatMap((ledger) => (Array.isArray(ledger.doc && ledger.doc.annotations) ? ledger.doc.annotations : [])
       .map((row) => normalizeAnnotation(row)))
     .filter(Boolean)
     .map((row) => ({ ...row, __bucket: pageId, __ledger: ledgerOfRow(row) }));

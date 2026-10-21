@@ -85,7 +85,7 @@ test('/save：桶在写入途中被删 → 503 bucket_gone，带说明，不是 
 });
 
 test('GET /registry 一只桶只读一次：页时间和孤儿行数共用这一次', async (t) => {
-  const { dir, dataRoot, registry, handler } = withFixture(t);
+  const { dataRoot, registry, handler } = withFixture(t);
   const bucket = path.join(dataRoot, 'web');
   fs.mkdirSync(bucket, { recursive: true });
   // 表面不在了：既要进页时间，又是孤儿行，旧装配会把这本账本读三遍。
@@ -107,7 +107,6 @@ test('GET /registry 一只桶只读一次：页时间和孤儿行数共用这一
   assert.equal(web.annotatedAt, Date.parse('2026-10-21T10:00:00.000Z'));
   assert.equal(web.orphans, 2);
   assert.equal(reads.get('gone~1.json'), 1, '同一只桶的账本在一次应答里只读一次');
-  assert.equal(dir.length > 0, true);
 });
 
 test('resolveRequestEntry defaults missing entry to pinpoint and flags unknown ids', (t) => {
