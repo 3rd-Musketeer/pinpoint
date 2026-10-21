@@ -89,22 +89,20 @@ for (const failures of [1, 2, 3]) {
             // 停驻时预览脚本按契约暂缓挂载，ready 要在打开恢复之后才发。
             await openFromTop(page);
           }
-          await expect.poll(() => page.evaluate(() => window.canvasReadyGen), { timeout: 60_000 }).toBe(failures + 1);
-          // 预热容器 visibility:hidden，不能用 toBeHidden 代替就绪断言。
-          await expect(status(page)).toHaveAttribute('hidden', '');
           expect(await page.evaluate(() => window.sawCanvasRetry)).toBe(false);
-          expect(requests).toBe(failures + 1);
-          await expect.poll(() => landing(page), { timeout: 30_000 }).toBe(prewarm ? 'section' : 'frame:confirm-sheet');
-          expect(await page.evaluate(() => window.pinpointOverlay.frame().contentWindow.__wbGen)).toBe(failures + 1);
         } else {
           await expect.poll(() => page.evaluate(() => window.sawCanvasRetry), { timeout: 30_000 }).toBe(true);
           expect(requests).toBe(3);
           if (prewarm) await openFromTop(page);
           await expect(overlay(page).locator('.ov-retry')).toBeVisible();
           await overlay(page).locator('.ov-retry').click();
-          await expect(status(page)).toBeHidden({ timeout: 30_000 });
-          expect(requests).toBe(4);
         }
+        await expect.poll(() => page.evaluate(() => window.canvasReadyGen), { timeout: 60_000 }).toBe(failures + 1);
+        // 预热容器 visibility:hidden，不能用 toBeHidden 代替就绪断言；ready 与 landing 才是恢复证据。
+        await expect(status(page)).toHaveAttribute('hidden', '', { timeout: 30_000 });
+        expect(requests).toBe(failures + 1);
+        await expect.poll(() => landing(page), { timeout: 30_000 }).toBe(prewarm ? 'section' : 'frame:confirm-sheet');
+        expect(await page.evaluate(() => window.pinpointOverlay.frame().contentWindow.__wbGen)).toBe(failures + 1);
         expect(entry.hits()).toBe(requests);
         expect(entry.hits()).toBeGreaterThan(0);
         await entry.unroute();
@@ -324,7 +322,7 @@ test('画布浮层：iframe 加载失败自动重装后就绪', async ({ page })
   await expect(overlay(page).frameLocator('iframe.ov-canvas').locator('#wb-board-panel [data-screen]')).toHaveCount(5);
 });
 
-test('画布浮层：board 失败时工作台自己的重试按钮点得到', async ({ page }) => {
+test('画布浮层：board 失败后工作台重试可点，恢复后同文档再开照常定位', async ({ page }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   let fail = true;
@@ -332,49 +330,36 @@ test('画布浮层：board 失败时工作台自己的重试按钮点得到', as
     if (fail) return route.fulfill({ status: 503, body: 'temporarily unavailable' });
     return route.continue();
   });
-  await openArticle(page);
-  await openFromTop(page);
   const inner = overlay(page).frameLocator('iframe.ov-canvas');
   const retry = inner.locator('[data-err-retry="board"]');
-  await expect(retry).toBeVisible({ timeout: 30_000 });
-  // 父页面每 100ms 才收一次准备态。等它收起，再看按钮中心点到的是 iframe 而不是准备态。
-  await expect(status(page)).toBeHidden({ timeout: 5_000 });
-  const box = await retry.boundingBox();
-  const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.className || '', {
-    x: box.x + box.width / 2, y: box.y + box.height / 2,
-  });
-  expect(hit, '准备态不能盖住工作台的重试').toContain('ov-canvas');
-  fail = false;
-  await retry.click();
-  await expect(inner.locator('#wb-board-panel [data-screen]')).toHaveCount(5, { timeout: 30_000 });
-});
 
-// 代次是文档常量（C1 修复轮）：工作台 boot 后 url-sync 会把 ?gen= 从地址里改写掉。
-// board 失败、点工作台自己的重试恢复后，同一文档再报的 ready 必须还带原来的代次，
-// 否则文章页把它当旧文档的消息丢掉，此后再开浮层都不再定位。
-test('画布浮层：board 失败后点工作台自己的重试，再开浮层照常定位', async ({ page }) => {
-  test.setTimeout(180_000);
-  await page.setViewportSize({ width: 1440, height: 900 });
-  let fail = true;
-  await page.route('**/board.json', (route) => {
-    if (fail) return route.fulfill({ status: 503, body: 'temporarily unavailable' });
-    return route.continue();
+  await test.step('准备态不遮工作台重试，点击后五帧恢复', async () => {
+    await openArticle(page);
+    await openFromTop(page);
+    await expect(retry).toBeVisible({ timeout: 30_000 });
+    // 父页面每 100ms 才收一次准备态。等它收起，再看按钮中心点到的是 iframe 而不是准备态。
+    await expect(status(page)).toBeHidden({ timeout: 5_000 });
+    const box = await retry.boundingBox();
+    const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.className || '', {
+      x: box.x + box.width / 2, y: box.y + box.height / 2,
+    });
+    expect(hit, '准备态不能盖住工作台的重试').toContain('ov-canvas');
+    fail = false;
+    await retry.click();
+    await expect(inner.locator('#wb-board-panel [data-screen]')).toHaveCount(5, { timeout: 30_000 });
   });
-  await openArticle(page);
-  await openFromTop(page);
-  const inner = overlay(page).frameLocator('iframe.ov-canvas');
-  const retry = inner.locator('[data-err-retry="board"]');
-  await expect(retry).toBeVisible({ timeout: 30_000 });
-  await expect(status(page)).toBeHidden({ timeout: 5_000 });
-  fail = false;
-  await retry.click();
-  await expect(inner.locator('#wb-board-panel [data-screen]')).toHaveCount(5, { timeout: 30_000 });
-  await overlay(page).locator('[data-ov-close]').click();
-  await expect(overlay(page)).not.toHaveAttribute('open', '');
-  await openFromCard(page);
-  await expect(overlay(page)).toHaveAttribute('open', '');
-  await expect.poll(() => page.evaluate(() => window.pinpointOverlay.state()?.landing), { timeout: 30_000 }).toBe('section');
-  await expect(status(page)).toBeHidden();
+
+  // 代次是文档常量（C1 修复轮）：工作台 boot 后 url-sync 会把 ?gen= 从地址里改写掉。
+  // board 失败、点工作台自己的重试恢复后，同一文档再报的 ready 必须还带原来的代次，
+  // 否则文章页把它当旧文档的消息丢掉，此后再开浮层都不再定位。
+  await test.step('同一文档恢复后再开，原代次 ready 仍能驱动定位', async () => {
+    await overlay(page).locator('[data-ov-close]').click();
+    await expect(overlay(page)).not.toHaveAttribute('open', '');
+    await openFromCard(page);
+    await expect(overlay(page)).toHaveAttribute('open', '');
+    await expect.poll(() => page.evaluate(() => window.pinpointOverlay.state()?.landing), { timeout: 30_000 }).toBe('section');
+    await expect(status(page)).toBeHidden();
+  });
 });
 
 // 文档被换掉（C1 修复轮）：iframe 里的工作台就绪后又被重新加载（dev 下 full-reload、
@@ -471,27 +456,7 @@ test('画布浮层：外壳模块慢四秒后放行，准备态收起，画布�
   expect(hit).toContain('ov-canvas');
 });
 
-test('画布浮层：启动脚本没起来显示重试，重试后就绪', async ({ page }) => {
-  test.setTimeout(180_000);
-  await page.setViewportSize({ width: 1440, height: 900 });
-  let fail = true;
-  const entry = await interceptWorkbenchEntry(page, 'stage', (route) => {
-    if (fail) return route.abort('failed');
-    return route.continue();
-  });
-  await openArticle(page);
-  await openFromTop(page);
-  await expect(overlay(page).locator('.ov-retry')).toBeVisible({ timeout: 15_000 });
-  expect(entry.hits()).toBeGreaterThan(0);
-  const box = await overlay(page).locator('.ov-retry').boundingBox();
-  expect(box.height).toBeGreaterThan(20);
-  fail = false;
-  await overlay(page).locator('.ov-retry').click();
-  await expect(status(page)).toBeHidden({ timeout: 30_000 });
-  await expect(overlay(page).frameLocator('iframe.ov-canvas').locator('#wb-board-panel [data-screen]')).toHaveCount(5);
-});
-
-test('画布浮层：重试按钮聚焦后按 Enter 发起新请求', async ({ page }) => {
+test('画布浮层：启动脚本失败后，聚焦重试按钮按 Enter 发起新请求并恢复五帧', async ({ page }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   let requests = 0;
@@ -501,19 +466,28 @@ test('画布浮层：重试按钮聚焦后按 Enter 发起新请求', async ({ p
     if (fail) return route.abort('failed');
     return route.continue();
   });
-  await openArticle(page);
-  await openFromTop(page);
   const retry = overlay(page).locator('.ov-retry');
-  await expect(retry).toBeVisible({ timeout: 15_000 });
-  expect(entry.hits()).toBe(requests);
-  expect(requests).toBeGreaterThan(0);
-  await retry.focus();
-  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 700)));
-  expect(await page.evaluate(() => document.activeElement?.className || '')).toContain('ov-retry');
-  fail = false;
-  await page.keyboard.press('Enter');
-  await expect.poll(() => requests).toBeGreaterThan(1);
-  await expect(status(page)).toBeHidden({ timeout: 30_000 });
+
+  await test.step('stage 入口确实失败，重试可见且焦点不被抢走', async () => {
+    await openArticle(page);
+    await openFromTop(page);
+    await expect(retry).toBeVisible({ timeout: 15_000 });
+    expect(entry.hits()).toBe(requests);
+    expect(requests).toBeGreaterThan(0);
+    const box = await retry.boundingBox();
+    expect(box.height).toBeGreaterThan(20);
+    await retry.focus();
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 700)));
+    expect(await page.evaluate(() => document.activeElement?.className || '')).toContain('ov-retry');
+  });
+
+  await test.step('Enter 激活同一重试按钮，真实入口放行后五帧就绪', async () => {
+    fail = false;
+    await page.keyboard.press('Enter');
+    await expect.poll(() => requests).toBeGreaterThan(1);
+    await expect(status(page)).toBeHidden({ timeout: 30_000 });
+    await expect(overlay(page).frameLocator('iframe.ov-canvas').locator('#wb-board-panel [data-screen]')).toHaveCount(5);
+  });
 });
 
 test('画布浮层：外壳入口明确失败显示重试，点了恢复', async ({ page }) => {
