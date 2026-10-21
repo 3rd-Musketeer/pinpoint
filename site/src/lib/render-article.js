@@ -6,9 +6,39 @@
  * （2026-10-15，docs/debugging.md）。这里把这种情况认出来交给页面回 503“内容同步中”，
  * 和“站点启动中”一样让浏览器自己刷新、让 ppnt shot 接着等；别的渲染错误照旧抛。
  *
- * → { syncing: false, rendered } 或 { syncing: true }。
+ * 模块已登记、但这篇的源文件已经被写坏（loader 的 loadError 条目还没接上）时，渲染走的
+ * mdx 转换会重读源文件、抛带文件路径的 YAMLException。只认路径归属到这篇（entry.data.file）
+ * 的解析错，转成与 loader catch 分支（loaders.js）同形的错误条 `file: message` 交给页面亮出来；
+ * 他篇/未知/无归属的错误照旧抛。→ { syncing: false, rendered: null, loadError }。
+ *
  * deps.render：astro:content 的 render；deps.moduleImports()：→ 模块表 Map（键是 entry.filePath）。
  */
+import fs from 'node:fs';
+import path from 'node:path';
+
+/** 两个路径是不是同一实物的可信名字：先字面比对；macOS 上 /var 与 /private/var 这类 symlink
+ *  别名（loaders.js watchAll 的 expand 同款坑）再各做一次 realpath。任一路径不存在或不是
+ *  绝对路径（错误 id 带 query 等形态）就不认——归属判定宁可漏认不可误认。 */
+function sameFile(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || !path.isAbsolute(a) || !path.isAbsolute(b)) return false;
+  if (a === b) return true;
+  try {
+    return fs.realpathSync(a) === fs.realpathSync(b);
+  } catch {
+    return false;
+  }
+}
+
+/** 已识别且属于这篇自己的 frontmatter/YAML 解析错 → 与 loader loadError 同形的错误条；其余 null。
+ * 依据是错误自带的文件身份（mdx 的 safeParseFrontmatter 给 YAMLException 补 id 与 loc.file），
+ * 不是 name/message——邻篇/组件抛的同名错不能当这篇的。 */
+function articleLoadError(entry, error) {
+  if (!error || error.name !== 'YAMLException' || typeof error.message !== 'string') return null;
+  const file = entry?.data?.file;
+  if (typeof file !== 'string') return null;
+  return [error.id, error.loc?.file].some((p) => sameFile(p, file)) ? `${file}: ${error.message}` : null;
+}
+
 export async function renderArticle(entry, { render, moduleImports }) {
   try {
     return { syncing: false, rendered: await render(entry) };
@@ -21,6 +51,8 @@ export async function renderArticle(entry, { render, moduleImports }) {
       throw error;
     }
     if (modules && typeof modules.has === 'function' && !modules.has(entry.filePath)) return { syncing: true };
+    const loadError = articleLoadError(entry, error);
+    if (loadError) return { syncing: false, rendered: null, loadError };
     throw error;
   }
 }

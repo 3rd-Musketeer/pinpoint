@@ -25,12 +25,15 @@ Astro.locals.ppSite = site;
 const p = site.projects.get(projectId);
 const a = p.articles.find((x) => x.id === articleId);
 // 刚写好的文章：内容库有了、渲染模块还没登记时回 503“内容同步中”（lib/render-article.js）。
-const loadError = a.entry.data.loadError;
-const body = loadError ? null : await renderArticle(a.entry, {
+// 已写坏但渲染模块还登记着的窗口里，renderArticle 把已识别的本篇解析错转成同形错误条，
+// 与 loader 的 loadError 同待遇亮错误，正文不渲染，而不是 Astro 通用 500。
+const entryLoadError = a.entry.data.loadError;
+const body = entryLoadError ? null : await renderArticle(a.entry, {
   render,
   moduleImports: async () => (await import('astro:content-module-imports')).default,
 });
 if (body?.syncing) return syncingResponse(a.title);
+const loadError = entryLoadError || body?.loadError;
 const { Content, remarkPluginFrontmatter } = body?.rendered || {};
 const sections = remarkPluginFrontmatter?.sections || [];
 // 这篇的画布（自动生成的页）：卡片从 locals 里取本节的帧；顶栏“画布视图”只在有画布节时出现。
