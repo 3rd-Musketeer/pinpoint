@@ -1295,6 +1295,63 @@ function makeCompiledPage(t, { screens, files }) {
   return { dir, page, registry, env };
 }
 
+/**
+ * 测试回执队列：被测回调 push，wait(n) 按实际回执兑现。5s 只是防挂 guard，
+ * 不是正常成功等待（watch 事件由 captureFsWatch 显式送达，不等 OS 投递）。
+ */
+function receiptQueue() {
+  const items = [];
+  const waiters = [];
+  const flush = () => {
+    for (let i = waiters.length - 1; i >= 0; i--) {
+      if (items.length >= waiters[i].n) {
+        clearTimeout(waiters[i].timer);
+        waiters[i].resolve();
+        waiters.splice(i, 1);
+      }
+    }
+  };
+  return {
+    items,
+    push(item) { items.push(item); flush(); },
+    wait(n, label) {
+      if (items.length >= n) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        waiters.push({
+          n,
+          resolve,
+          timer: setTimeout(() => reject(new Error(`guard：5s 没等到 ${label}（已有 ${items.length} 条）`)), 5000),
+        });
+      });
+    },
+  };
+}
+
+/**
+ * 用 node:test 自带的 mock 在本测试范围内接住 fs.watch：注册参数（监听的实际
+ * 路径、recursive 绑定）留证可断言，change 回调由测试经 deliver 显式送达。
+ * 返回的 watcher 只支撑 close（startPageWatch 只用这个面）。
+ */
+function captureFsWatch(t) {
+  const calls = [];
+  t.mock.method(fs, 'watch', (target, options, listener) => {
+    calls.push({
+      target,
+      options: typeof options === 'function' ? {} : options,
+      listener: typeof options === 'function' ? options : listener,
+    });
+    return { close() {} };
+  });
+  return {
+    calls,
+    deliver(filename, eventType = 'change') {
+      const call = calls.at(-1);
+      assert.ok(call && call.listener, 'fs.watch 尚未注册，没有可送达的回调');
+      call.listener(eventType, filename);
+    },
+  };
+}
+
 test('runBuild：整页编译打印每屏 ok 与耗时，失败屏非零退出', async (t) => {
   const rec = recorder();
   const { registry, env } = makeCompiledPage(t, {
@@ -1341,53 +1398,38 @@ test('startPageWatch：多个文件的改动都编出来；只改一屏时没改
   assert.equal(await runBuild(['build', 't-page', '--registry', made.registry], { ...first.io, env: made.env }), 0, first.err.join('\n'));
   const distEntry = path.join(made.env.PINPOINT_DATA_DIR, 'dist', 't-page');
 
+  // fs.watch 由测试接管：注册参数留证，事件显式送达。macOS 的 recursive
+  // fs.watch 走 FSEvents，挂载与投递延迟在负载下可达秒级且事件成簇合并；
+  // 这条测的是「变更集合 → 编译调度」，不绑 OS 投递时序（真实投递由诊断探针另核）。
+  const watch = captureFsWatch(t);
   const target = { entryId: 't-page', pageDir: made.page, urlBase: '/sites/t-page/', kind: 'dir' };
-  const results = [];
-  const { watcher, done } = startPageWatch(
+  const batches = receiptQueue();
+  const { watcher } = startPageWatch(
     target,
-    (result) => results.push(result),
+    (result) => batches.push(result),
     { debounceMs: 30, distRoot: path.join(made.env.PINPOINT_DATA_DIR, 'dist') },
   );
   t.after(() => watcher.close());
-  // macOS 的 recursive fs.watch 走 FSEvents，挂载是异步的：起 watch 后立刻写
-  // 文件会赶不上第一拍。挂载前写丢的改动会被漂移校验判成全编（正确行为，但会
-  // 重写 c），所以先只重写 a（同内容）直到收到第一拍，确认 watch 已挂上，再记 c 的基线。
-  for (const deadline = Date.now() + 5000; !results.length;) {
-    if (Date.now() > deadline) throw new Error('watch 5s 内没挂上');
-    fs.writeFileSync(path.join(made.page, 'a.html'), '<div class="ios-app">a1</div>\n');
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    await done();
-  }
-  // 第一段：a、b 都改，两屏都编出新内容。周期性重写直到 dist 出现新内容（重写
-  // 同内容幂等，只当触发器用）；事件送达与去抖的时序不打紧，拆成几批终态也一样。
-  // 这一段不断言 c：a 那一批规划时 b 的事件可能还没送到，漂移校验会判全编
-  // （宁可多编，正确行为），c 被重写与否取决于负载下的事件时序。
-  const writeUntil = async (writes, expect) => {
-    const deadline = Date.now() + 5000;
-    for (;;) {
-      for (const [file, body] of writes) fs.writeFileSync(path.join(made.page, file), body);
-      const state = expect.map(([file, needle]) => fs.readFileSync(path.join(distEntry, file), 'utf8').includes(needle));
-      if (state.every(Boolean)) return;
-      if (Date.now() > deadline) throw new Error(`watch 5s 内没编出新 dist（${expect.map(([f], i) => `${f}=${state[i]}`).join(' ')}）`);
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-  };
-  await writeUntil(
-    [['a.html', '<div class="ios-app">a2</div>\n'], ['b.html', '<div class="ios-app">b2</div>\n']],
-    [['a.html', 'a2'], ['b.html', 'b2']],
-  );
-  // 等迟到的事件排空：结果数 500ms 不再增长才记 c 的基线。
-  for (let seen = -1; seen !== results.length;) {
-    seen = results.length;
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    await done();
-  }
+  assert.equal(watch.calls.length, 1, '一页挂一个 watcher');
+  assert.equal(watch.calls[0].target, made.page, '监听页目录本身');
+  assert.equal(watch.calls[0].options.recursive, true, 'recursive 绑定（子目录变更也要接住）');
+
+  // 第一拍：a、b 各改一次并同拍送达，去抖攒成一批，两屏都编出新内容。
+  fs.writeFileSync(path.join(made.page, 'a.html'), '<div class="ios-app">a2</div>\n');
+  fs.writeFileSync(path.join(made.page, 'b.html'), '<div class="ios-app">b2</div>\n');
+  watch.deliver('a.html');
+  watch.deliver('b.html');
+  await batches.wait(1, 'a/b 同拍编成一批');
+  assert.ok(fs.readFileSync(path.join(distEntry, 'a.html'), 'utf8').includes('a2'), 'a 编出新内容');
+  assert.ok(fs.readFileSync(path.join(distEntry, 'b.html'), 'utf8').includes('b2'), 'b 编出新内容');
   const cBefore = fs.statSync(path.join(distEntry, 'c.html')).mtimeMs;
-  // 第二段：只改 a。a 自己在变更集合里，b、c 的记录与盘一致，没有漂移 → 只编 a。
-  await writeUntil([['a.html', '<div class="ios-app">a3</div>\n']], [['a.html', 'a3']]);
+
+  // 第二拍：只改 a。a 自己在变更集合里，b、c 的记录与盘一致，没有漂移 → 只编 a。
+  fs.writeFileSync(path.join(made.page, 'a.html'), '<div class="ios-app">a3</div>\n');
+  watch.deliver('a.html');
+  await batches.wait(2, '只改 a 的一拍');
   watcher.close();
-  await done();
-  assert.ok(results.length >= 1, 'onResult 至少收到一次编译结果');
+  assert.ok(fs.readFileSync(path.join(distEntry, 'a.html'), 'utf8').includes('a3'), '第二拍编出 a3');
   assert.equal(fs.statSync(path.join(distEntry, 'c.html')).mtimeMs, cBefore, '没改的屏不重编');
 });
 
@@ -1416,36 +1458,39 @@ test('startPageWatch：一拍抛错只打日志，串行链不断，后面的批
   const first = recorder();
   assert.equal(await runBuild(['build', 't-page', '--registry', made.registry], { ...first.io, env: made.env }), 0);
   const distEntry = path.join(made.env.PINPOINT_DATA_DIR, 'dist', 't-page');
+  // 同上一套：fs.watch 注册留证，事件由测试显式送达，不等 OS 投递。
+  const watch = captureFsWatch(t);
   const target = { entryId: 't-page', pageDir: made.page, urlBase: '/sites/t-page/', kind: 'dir' };
-  const errors = [];
-  const results = [];
-  const { watcher, done } = startPageWatch(target, (result) => {
-    results.push(result);
+  const errors = receiptQueue();
+  const batches = receiptQueue();
+  const { watcher } = startPageWatch(target, (result) => {
+    batches.push(result);
     // 第一拍的收尾抛错（替身：dist 写盘 IO 错之类）；链必须活下来。
-    if (results.length === 1) throw new Error('第一拍炸了');
+    if (batches.items.length === 1) throw new Error('第一拍炸了');
   }, {
     debounceMs: 30,
     distRoot: path.join(made.env.PINPOINT_DATA_DIR, 'dist'),
     onError: (error) => errors.push(error.message),
   });
   t.after(() => watcher.close());
-  // FSEvents 挂载是异步的，周期性重写当触发器（见上一条的注释）。
-  const until = async (label, ready, touch) => {
-    const deadline = Date.now() + 5000;
-    for (;;) {
-      touch();
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      await done();
-      if (ready()) return;
-      if (Date.now() > deadline) throw new Error(`watch 5s 内没等到：${label}`);
-    }
-  };
-  await until('第一拍抛错', () => errors.length >= 1, () => fs.writeFileSync(path.join(made.page, 'a.html'), '<div class="ios-app">a2</div>\n'));
-  await until('抛错之后的下一拍照常编', () => fs.readFileSync(path.join(distEntry, 'b.html'), 'utf8').includes('b2'),
-    () => fs.writeFileSync(path.join(made.page, 'b.html'), '<div class="ios-app">b2</div>\n'));
+  assert.equal(watch.calls.length, 1, '一页挂一个 watcher');
+  assert.equal(watch.calls[0].target, made.page, '监听页目录本身');
+  assert.equal(watch.calls[0].options.recursive, true, 'recursive 绑定（子目录变更也要接住）');
+
+  // 第一拍：编译照常完成、产物落盘，收尾回调抛错 → onError 真实收到。
+  fs.writeFileSync(path.join(made.page, 'a.html'), '<div class="ios-app">a2</div>\n');
+  watch.deliver('a.html');
+  await batches.wait(1, '第一拍');
+  await errors.wait(1, '第一拍的异常进 onError');
+  assert.ok(fs.readFileSync(path.join(distEntry, 'a.html'), 'utf8').includes('a2'), '抛错那一拍的产物照常落盘');
+
+  // 第二拍：链没被第一拍的异常打死，后面的批次照常编。
+  fs.writeFileSync(path.join(made.page, 'b.html'), '<div class="ios-app">b2</div>\n');
+  watch.deliver('b.html');
+  await batches.wait(2, '抛错后的下一拍');
   watcher.close();
-  assert.deepEqual(errors, ['第一拍炸了']);
-  assert.ok(results.length >= 2, '抛错后的批次仍回报结果');
+  assert.deepEqual(errors.items, ['第一拍炸了']);
+  assert.ok(fs.readFileSync(path.join(distEntry, 'b.html'), 'utf8').includes('b2'), '抛错后的批次照常编');
 });
 
 test('runRender：限内打全文，超限截断并落 spill 文件，--full 不截断', async (t) => {
