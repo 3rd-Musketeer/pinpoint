@@ -517,9 +517,14 @@ test('右栏：画布标注按位置穿插在正文评论之间，四态、原�
     await test.step('点右栏的画布标注：开画布浮层，定位到那颗钉子并打开它', async () => {
       // 宽屏卡片按锚点排在画布旁边：先把那张画布滚进视口，卡片才跟着进来，点得到。
       await page.locator('[data-pp-canvas][data-pp-section="variants"]').scrollIntoViewIfNeeded();
-      const at = await scrollOf(page);
       // 点卡片上链接以外的地方（“画布标注”字样）也开画布；正文那句现在点着是编辑。
-      await rail.locator(`.pp-thread[data-kind="canvas"][data-n="${plainN}"] .pp-kind`).first().click();
+      // click 自己会再把目标滚进视口（第四次完整 check 的 trace：读 at 时 2087，真实 click 的
+      // scrolling into view 把页面挪到 1583，浮层保存/恢复的就是 1583）——先把目标滚到位
+      // 再记 at，at 才是浮层打开时真正的滚动位置。
+      const kind = rail.locator(`.pp-thread[data-kind="canvas"][data-n="${plainN}"] .pp-kind`).first();
+      await kind.scrollIntoViewIfNeeded();
+      const at = await scrollOf(page);
+      await kind.click();
       await expect(overlay(page)).toHaveAttribute('open', '');
       expect(hashOf(page)).toBe(`#canvas=variants&ann=${plainN}`);
       await expect.poll(() => overlayState(page).then((st) => st && st.landing), { timeout: 30_000 }).toBe(`ann:${plainN}`);
