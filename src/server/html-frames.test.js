@@ -555,6 +555,27 @@ test('sidecar 挂载点警告（R5 S3）：同名 .js 没有挂载点报 sidecar
   assert.ok(!docSection.diagnostics.some((row) => row.code === 'sidecar_no_mount'));
 });
 
+test('sidecar 提示只对默认 app 帧拿产物：显式 app、comp、doc 的节级 shell 不报 sidecar_no_mount', async (t) => {
+  const { article, registry } = fixture(t);
+  const frame = (name) => `export default function Frame() {\n  return <div className="ios-app">${name}</div>;\n}\n`;
+  const sidecar = 'export function mount(root) { root.dataset.mounted = "1"; }\n';
+  write(path.join(article, 'index.mdx'), [
+    '---', 'title: 页面', '---', '',
+    '<Section id="deflt" title="默认">', '', '<Canvas frames={["def1"]} />', '', '</Section>', '',
+    '<Section id="explicit" title="显式 app">', '', '<Canvas frames={["app1"]} shell="app" />', '', '</Section>', '',
+    '<Section id="wall" title="组件墙">', '', '<Canvas frames={["comp1"]} shell="comp" />', '', '</Section>', '',
+    '<Section id="docsec" title="文档">', '', '<Canvas frames={["doc1"]} shell="doc" />', '', '</Section>', '',
+  ].join('\n'));
+  for (const id of ['def1', 'app1', 'comp1', 'doc1']) {
+    write(path.join(article, `${id}.jsx`), frame(id));
+    write(path.join(article, `${id}.js`), sidecar);
+  }
+  const report = await checkProject(registry, 'demo', { articleId: 'pages' });
+  const hints = report.diagnostics.filter((row) => row.code === 'sidecar_no_mount');
+  assert.deepEqual(hints.map((row) => row.frame), ['def1'], JSON.stringify(report.diagnostics, null, 1));
+  assert.equal(hints[0].severity, 'warning');
+});
+
 test('裸组件帧缺机壳报 frame_shell_missing（R5 B4）；有机壳或 Canvas shell="comp" 不报', async (t) => {
   const { article, registry } = fixture(t);
   write(path.join(article, 'index.mdx'), [
