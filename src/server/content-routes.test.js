@@ -173,6 +173,35 @@ test('kit path only answers GET/HEAD; write methods are a loud 405', async () =>
   }
 });
 
+test('frame shell css and frame-boot answer the raw source, with HEAD and 304', async () => {
+  const handler = kitMiddleware();
+  const css = await callKit(handler, 'GET', '/api/frame-shell.css');
+  assert.equal(css.next, false);
+  assert.equal(css.res.statusCode, 200);
+  assert.match(css.res.headers['Content-Type'], /^text\/css/);
+  assert.equal(css.res.headers['Cache-Control'], 'no-cache');
+  assert.match(css.res.headers.ETag, /^"[0-9a-f]{16}"$/);
+  assert.match(css.res.text, /html,body\{margin:0/);
+  assert.ok(!css.res.text.includes('/@vite/client'));
+  const boot = await callKit(handler, 'GET', '/api/frame-boot.js');
+  assert.equal(boot.res.statusCode, 200);
+  assert.match(boot.res.headers['Content-Type'], /^application\/javascript/);
+  assert.match(boot.res.text, /\/api\/frame 嵌入页的预览脚本运行时/);
+  assert.ok(!boot.res.text.includes('/@vite/client'));
+  const head = await callKit(handler, 'HEAD', '/api/frame-boot.js');
+  assert.equal(head.res.statusCode, 200);
+  assert.equal(head.res.chunks.length, 0);
+  assert.equal(head.res.headers.ETag, boot.res.headers.ETag);
+  const cached = await callKit(handler, 'GET', '/api/frame-boot.js', { 'if-none-match': boot.res.headers.ETag });
+  assert.equal(cached.res.statusCode, 304);
+  assert.equal(cached.res.chunks.length, 0);
+  const post = await callKit(handler, 'POST', '/api/frame-shell.css');
+  assert.equal(post.res.statusCode, 405);
+  assert.equal(post.res.headers.Allow, 'GET, HEAD');
+  const missing = await callKit(handler, 'GET', '/api/frame-boot/nope.js');
+  assert.equal(missing.next, true, '外壳只有这两个精确路径，其余继续交给后面的路由');
+});
+
 test('缺失文件的真 404 带 no-cache（review 建议 3：URL 之后可能补回来，不许存「不存在」）', async () => {
   const handler = kitMiddleware();
   const { next, res } = await callKit(handler, 'GET', '/kits/nope.css');

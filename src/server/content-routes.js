@@ -24,7 +24,8 @@ import path from 'node:path';
 
 import { annotateInjection } from './lib/annotate-snippet.js';
 import { annotateClientSrc, injectAnnotateSrc } from './lib/annotate-bundle.js';
-import { sendCacheable } from './lib/http-respond.js';
+import { contentEtag, sendCacheable } from './lib/http-respond.js';
+import { FRAME_BOOT_PATH, FRAME_SHELL_CSS_PATH, frameBootSource, frameShellCss } from './lib/frame-doc.js';
 import { parseReqUrl } from './lib/req-url.js';
 import { resolveContainedFile, resolveContainedPath } from './lib/servable-file.js';
 import {
@@ -121,6 +122,24 @@ export default function contentRoutes() {
       server.middlewares.use(async (req, res, next) => {
         if (!req.url) return next();
         const urlPath = parseReqUrl(req).pathname;
+        // /api/frame 每张文档都引用的固定外壳。读原文应答：frame-boot 走 vite 转换会被注入开发模块。
+        // 错路径不在这里拦，继续落到后面的 404。离线导出不引用这两个地址，仍内联原文。
+        if (urlPath === FRAME_SHELL_CSS_PATH || urlPath === FRAME_BOOT_PATH) {
+          if (req.method !== 'GET' && req.method !== 'HEAD') {
+            res.statusCode = 405;
+            res.setHeader('Allow', 'GET, HEAD');
+            res.end();
+            return;
+          }
+          const css = urlPath === FRAME_SHELL_CSS_PATH;
+          const body = Buffer.from(css ? frameShellCss() : frameBootSource(), 'utf8');
+          sendCacheable(req, res, body, {
+            policy: { cacheControl: 'no-cache' },
+            contentType: css ? 'text/css; charset=utf-8' : 'application/javascript; charset=utf-8',
+            etag: contentEtag(body),
+          });
+          return;
+        }
         const normalized = normalizedPathname(urlPath);
         const mapped = PREFIXES.find(([from]) => urlPath.startsWith(from));
         if (mapped && !normalized?.startsWith(mapped[0])) {

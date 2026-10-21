@@ -305,7 +305,7 @@ export default function ConfirmBare() {
 - `figures` 是正文里的图，每个 `<Figure>` 一项，见下面“图”。图的错误（`code` 以 `figure_` 开头）也在 `errors` 里，站点把它们显示在图的位置，不分到卡片和页顶错误条。
 - 文章不存在或 project 没登记时，`sections` 为空，`errors` 说明原因。
 - 帧卡片读 `/api/frame?page=<pageId>&screen=<帧 id>&annotate=off&embed=card`；静态帧（无运行时脚本、CSS 不依赖帧视口）的卡片不建 iframe，浏览器端把帧 HTML 挂进卡片里的 shadow root（`site/src/lib/canvas-card-client.js`，判据见 `site/README.md`“写文章”）；带运行时脚本的帧、HTML 帧与挂载失败的帧留 iframe。画布浮层里是嵌入版工作台 `/workbench/?page=<pageId>&section=<节 id>&embed=overlay&gen=<文档代次>`（`gen` 的语义见 `site/README.md`「画布浮层」），新标签页打开画布用不带 `embed` 的同一个地址；这一桶的画布账本是 `GET /annotations/%40canvas?entry=<pageId>`。
-- `embed=card` 是站点读帧的契约（`frame-doc.js` 的 `markEmbedStage`）：不出图注，不注入标注客户端，`<html>` 带 `data-pp-embed="card"`，第一个机壳带 `data-pp-stage="phone|comp|doc"`，手机机身带 `data-pp-device`。站点只认这几个属性量尺寸，不认工作台的 class 名；只加属性，机壳以下的 DOM 与画布同构。`embed` 只接受 `card`，别的值 400。
+- `embed=card` 是站点读帧的契约（`frame-doc.js` 的 `markEmbedStage`）：不出图注，不注入标注客户端，`<html>` 带 `data-pp-embed="card"`，第一个机壳带 `data-pp-stage="phone|comp|doc"`，手机机身带 `data-pp-device`。站点只认这几个属性量尺寸，不认工作台的 class 名；只加属性，机壳以下的 DOM 与画布同构。`embed` 只接受 `card`，别的值 400。每张帧文档用同一个 `/api/frame-shell.css` 和 `/api/frame-boot.js`，不再把工作台内联样式和 frame-boot 原文重复放进 HTML。离线导出仍把这两段内联进导出文件，不依赖这两个地址。
 
 ## 图
 

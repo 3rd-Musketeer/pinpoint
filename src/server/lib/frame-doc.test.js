@@ -187,7 +187,9 @@ test('framePageHtml: self-contained document with identity injection and inert p
   assert.ok(html.includes('<base href="/sites/e2e-ios/">'));
   assert.ok(html.includes('data-annotate="off"'));
   assert.ok(html.includes('/kits/ios/ios-kit.css'));
-  assert.ok(html.includes('[frame-boot]'));
+  assert.ok(html.includes('href="/api/frame-shell.css"'));
+  assert.ok(html.includes('src="/api/frame-boot.js"'));
+  assert.ok(!html.includes('[frame-boot]'));
   assert.ok(html.includes('window.__pinpointFrame={"pageId":"e2e-ios","screenId":"recipe"'));
   assert.ok(html.includes('"section":"brew-flow"'));
   // storage-unify：entry = 帧所属页；不再注入 __pinpointLedger（帧账本恒 @canvas，
@@ -210,7 +212,8 @@ test('framePageHtml: annotate=off drops the annotate client but keeps boot mecha
   // 哈希地址与老地址都不许出现。
   assert.ok(!/<script src="\/annotate/.test(html));
   assert.ok(!html.includes('__pinpointFrame'));
-  assert.ok(html.includes('[frame-boot]'));
+  assert.ok(html.includes('src="/api/frame-boot.js"'));
+  assert.ok(!html.includes('[frame-boot]'));
   assert.ok(html.includes('data-preview-mount'));
 });
 

@@ -3,8 +3,9 @@
  *
  * 解析 pageId + screenId → frame 目标（previews 模板页 / registry dir·file
  * 条目），然后：
- * - fragment 屏（ios app/lock、comp）→ 组装完整自包含 HTML 文档（fragment +
- *   机壳 + ios-kit + frame-boot + annotate 注入），机壳与画布装载共享
+ * - fragment 屏（ios app/lock、comp）→ 组装完整 HTML 文档（fragment +
+ *   机壳 + ios-kit + annotate 注入）。固定外壳 CSS 与 frame-boot 是同源链接
+ *   （/api/frame-shell.css、/api/frame-boot.js），离线导出仍内联原文。机壳与画布装载共享
  *   src/shared/frame-shell.js —— 两端 stage 以下 DOM 链逐字节同构，锚点归一才成立；
  * - doc 壳屏（完整文档 / 合成板）→ 不重包装，由端点 302 到该屏
  *   自己的 URL（同文档同 pathname → 标注天然落同一个按路径分的账本）。
@@ -221,16 +222,28 @@ export function readWorkbenchInlineStyles() {
   return [...index.matchAll(/<style(?:\s[^>]*)?>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n');
 }
 
-// frame-boot 必须内联：经 vite 静态服务会被 import-analysis 注入 /@vite/client
-// 静态 import（经典脚本直接 SyntaxError），内联既免疫转换也让 frame 页自包含。
+/** 每张 /api/frame 文档都相同的外壳：index.html 内联样式，加上只在帧页成立的 body / token / 边距。 */
+export function frameShellCss() {
+  return `${readWorkbenchInlineStyles()}
+html,body{margin:0;padding:0;background:transparent;height:auto;overflow:visible}
+${frameTokensStyle()}
+.wb-screen{margin:0}
+`;
+}
+
+// frame-boot 原文。经 vite 静态服务会被 import-analysis 注入 /@vite/client，
+// 所以 /api/frame-boot.js 由 content-routes 读原文应答，不走 vite 转换。
 let frameBootCache = null;
-function frameBootSource() {
+export function frameBootSource() {
   if (frameBootCache) return frameBootCache;
   const src = fs.readFileSync(path.join(ROOT, 'src', 'client', 'frame-boot.js'), 'utf8');
   if (/<\/script/i.test(src)) throw new FrameDocError('bad_request', 'frame-boot.js must not contain </script>');
   frameBootCache = src;
   return src;
 }
+
+export const FRAME_SHELL_CSS_PATH = '/api/frame-shell.css';
+export const FRAME_BOOT_PATH = '/api/frame-boot.js';
 
 // 画布 frame 的视觉 token：.wb-library 块的几何档（index.html 内联样式）+
 // wb-tokens.css :root 的色档。与 workbench/export-core.js EXPORT_TOKEN_NAMES 同名单。
@@ -282,7 +295,7 @@ export function markEmbedStage(html) {
 }
 
 /**
- * 组装 /api/frame 的完整自包含 HTML 文档。
+ * 组装 /api/frame 的完整 HTML 文档（机壳与标记都在；外壳 CSS 与 frame-boot 是同源链接）。
  * data-annotate="off" 只挡 ios-kit 的自注入；annotate 注入由本函数显式完成
  * （带 __pinpointEntry=帧所属页 / __pinpointFrame=帧身份）。opts.annotate 是
  * 请求层的判定结果（annotateInjection，frame-api 里判 ?annotate=off / entry），
@@ -317,14 +330,7 @@ export async function framePageHtml(target, opts = {}) {
 <title>${escHtml(target.title || target.screenId)}</title>
 <link rel="stylesheet" href="/workbench/wb-tokens.css">
 <link rel="stylesheet" href="/kits/ios/ios-kit.css">
-<style>${readWorkbenchInlineStyles()}</style>
-<style>
-/* 覆盖 index.html 内联样式里的 workbench 壳 body 规则（100vh + overflow:hidden
-   会把 frame 页裁死、撑不出真实内容高度 —— 父级 autosize 依赖 scrollHeight）。 */
-html,body{margin:0;padding:0;background:transparent;height:auto;overflow:visible}
-${frameTokensStyle()}
-.wb-screen{margin:0}
-</style>
+<link rel="stylesheet" href="${FRAME_SHELL_CSS_PATH}">
 </head>
 <body>
 <div class="wb-screen" data-screen="${escHtml(target.screenId)}">
@@ -332,7 +338,7 @@ ${embed ? '' : frameCaptionHtml(target)}
 ${wrapped}
 </div>
 <script src="/kits/ios/ios-kit.js"></script>
-<script>${frameBootSource()}</script>
+<script src="${FRAME_BOOT_PATH}"></script>
 ${inject}
 </body>
 </html>`;

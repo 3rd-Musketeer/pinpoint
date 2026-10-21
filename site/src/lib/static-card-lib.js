@@ -4,12 +4,14 @@
  * 在 canvas-card-client.js。机制依据：tasks 2026-10-19-ppnt-overhaul 的 r3 原型。
  */
 
-/** 服务端内联进帧页的 frame-boot 启动脚本（src/client/frame-boot.js 的 docblock 首行）。 */
+/** 服务端共享的 frame-boot（content-routes 的 /api/frame-boot.js，原文不经 vite 转换）。
+ *  内联形态的标记留着：旧文档或测试夹具里仍可能是整段脚本。 */
+export const FRAME_BOOT_PATH = '/api/frame-boot.js';
 export const FRAME_BOOT_MARKER = '/api/frame 嵌入页的预览脚本运行时';
 
 /**
  * 帧文档里一个 <script> 的身份：
- *   'boot'    ios-kit 或内联 frame-boot —— 静态挂载时剥掉（kit 由卡片页统一加载）；
+ *   'boot'    ios-kit，或共享 / 内联 frame-boot —— 静态挂载时剥掉（kit 由卡片页统一加载）；
  *   'preview' data-preview-script / data-preview-mount —— 有运行时脚本的帧留 iframe；
  *   'other'   来路不明的脚本 —— 同样留 iframe（不知道它会不会动 DOM / 查 document）。
  */
@@ -17,7 +19,8 @@ export function classifyFrameScript({ src = '', attrs = '', text = '' }) {
   if (/\bdata-preview-(?:script|mount)\b/.test(attrs)) return 'preview';
   if (src) {
     try {
-      if (new URL(src, 'http://x/').pathname === '/kits/ios/ios-kit.js') return 'boot';
+      const pathname = new URL(src, 'http://x/').pathname;
+      if (pathname === '/kits/ios/ios-kit.js' || pathname === FRAME_BOOT_PATH) return 'boot';
     } catch { /* 非法地址按 other */ }
     return 'other';
   }
