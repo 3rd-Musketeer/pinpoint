@@ -29,6 +29,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 import { deriveArticleBoard } from './article-board.js';
@@ -131,7 +132,12 @@ export function resolvePageTarget(pageRef, { registry = null, root = ROOT } = {}
  * 文章画布从 index.mdx 派生（带缓存）。读不到 / 坏 JSON 抛错（编译要响，
  * 容忍 null 的消费方走 source.readBoard()）。
  */
-export function readTargetBoard(target) {
+export function readTargetBoard(target, input = null) {
   if (target && target.kind === 'article') return deriveArticleBoard(target).board;
-  return JSON.parse(fs.readFileSync(requireSource(target, 'board.json'), 'utf8'));
+  const file = fs.realpathSync(requireSource(target, 'board.json'));
+  const mtimeMs = fs.statSync(file).mtimeMs;
+  const bytes = fs.readFileSync(file);
+  const board = JSON.parse(bytes.toString('utf8'));
+  if (input) Object.assign(input, { file: 'board.json', mtimeMs, realpath: fs.realpathSync(file), sha256: crypto.createHash('sha256').update(bytes).digest('hex') });
+  return board;
 }

@@ -99,7 +99,11 @@ test('模板页 components/ 子目录变更 → 重编 + preview:update（M2）'
   await hit.handleHotUpdate({ file: path.join(pageDir, 'components', 'X.css'), server: s });
   assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'tpl-page' } }]);
   s.sent.length = 0;
-  await hit.handleHotUpdate({ file: path.join(pageDir, 'board.json'), server: s });
+  const boardFile = path.join(pageDir, 'board.json');
+  const changedBoard = JSON.parse(fs.readFileSync(boardFile, 'utf8'));
+  changedBoard.sections[0].title = 'Changed';
+  fs.writeFileSync(boardFile, JSON.stringify(changedBoard));
+  await hit.handleHotUpdate({ file: boardFile, server: s });
   assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'tpl-page' } }]);
   s.sent.length = 0;
   await hit.handleHotUpdate({ file: path.join(pageDir, 'components', 'board.json'), server: s });
@@ -328,7 +332,7 @@ test('首事件等一小拍收同伴：收集窗走完、收口之前才到的�
       primed = false;
       const bFile = path.join(pageDir, 'b.html');
       fs.writeFileSync(bFile, '<div class="ios-app">b2</div>\n');
-      pending.add(bFile);
+      pending.set(bFile, 'change');
     },
   });
   const s = fakeServer();
@@ -548,4 +552,52 @@ test('嵌套双独立 alias：fallback 选最长等价根，inner dir 与 file �
   await fileHit.handleHotUpdate({ file: fileLeaf, server: s2 });
   assert.deepEqual(s2.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'n3-file' } }]);
   assert.equal(fs.statSync(path.join(distRoot, 'n3-outer', 'x.html')).mtimeMs, xBefore, 'outer 仍不被抢编');
+});
+
+test('已消费 change 混批只通知 alpha；全重复零写零通知；重复 JS 不污染 reload', async (t) => {
+  const { compilePage } = await import('./lib/page-compiler.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-consumed-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const pageDir = path.join(dir, 'page'); const distRoot = path.join(dir, 'dist');
+  fs.mkdirSync(path.join(pageDir, 'components'), { recursive: true });
+  const write = (file, value) => fs.writeFileSync(path.join(pageDir, file), value);
+  const alpha = (value) => `import { Chip } from './components/Chip.jsx';\nimport { text } from './label.js';\nexport default function F(){return <div>${value}{text}<Chip /></div>}\n`;
+  write('board.json', JSON.stringify({ sections: [{ id: 's', screens: [{ id: 'alpha' }, { id: 'beta' }] }] }));
+  write('alpha.jsx', alpha('v1')); write('beta.html', '<div>beta</div>');
+  write('components/Chip.jsx', 'export function Chip(){return <span>chip</span>}');
+  write('label.js', 'export const text = "label1";');
+  const target = { entryId: 'fresh', pageDir, kind: 'dir', urlBase: '/sites/fresh/' };
+  assert.equal((await compilePage(target, { distRoot })).ok, true);
+  const hit = previewHmr({ registry: { entries: [{ id: 'fresh', kind: 'dir', path: pageDir }] }, distRoot, collectMs: 0 });
+  const server = fakeServer();
+  const hot = file => hit.handleHotUpdate({ file: path.join(pageDir, file), server });
+  const buildPath = path.join(distRoot, 'fresh', 'build.json');
+  const betaPath = path.join(distRoot, 'fresh', 'beta.html');
+  const initial = fs.statSync(buildPath).mtimeMs;
+  const before = fs.readFileSync(buildPath, 'utf8');
+  await Promise.all(['board.json', 'beta.html', 'components/Chip.jsx', 'label.js', 'alpha.jsx'].map(hot));
+  assert.deepEqual(server.sent, []);
+  assert.equal(fs.statSync(buildPath).mtimeMs, initial);
+  assert.equal(fs.readFileSync(buildPath, 'utf8'), before);
+  const betaBefore = fs.statSync(betaPath).mtimeMs;
+  write('alpha.jsx', alpha('v2'));
+  await Promise.all(['board.json', 'beta.html', 'components/Chip.jsx', 'label.js', 'alpha.jsx'].map(hot));
+  assert.deepEqual(server.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'fresh', screens: ['alpha'] } }]);
+  assert.equal(fs.statSync(betaPath).mtimeMs, betaBefore);
+  assert.match(fs.readFileSync(path.join(distRoot, 'fresh', 'alpha.html'), 'utf8'), /v2/);
+  server.sent.length = 0;
+  write('label.js', 'export const text = "label2";');
+  await Promise.all(['board.json', 'label.js'].map(hot));
+  assert.deepEqual(server.sent, [{ type: 'full-reload' }]);
+  assert.match(fs.readFileSync(path.join(distRoot, 'fresh', 'alpha.html'), 'utf8'), /label2/);
+  server.sent.length = 0;
+  write('beta.html', '<div>beta2</div>');
+  fs.utimesSync(path.join(pageDir, 'beta.html'), 0, 0);
+  await hot('label.js');
+  assert.deepEqual(server.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'fresh' } }], '重复 JS 全过滤后，带外 drift 仍全编，但不污染 reload');
+  assert.match(fs.readFileSync(betaPath, 'utf8'), /beta2/);
+  server.sent.length = 0;
+  // add 与 change 同批时，后到 change 不能把 add 降级成安全。
+  await Promise.all([hit.onProjectFileAddOrRemove(server, path.join(pageDir, 'board.json'), false), hot('board.json')]);
+  assert.deepEqual(server.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'fresh' } }]);
 });

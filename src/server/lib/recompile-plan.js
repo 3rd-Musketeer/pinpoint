@@ -14,9 +14,12 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
-import { defaultDistRoot, readBuildJson, readDistBoard, screenEntriesFromBoard } from './page-compiler.js';
+import { compilerStamp, defaultDistRoot, readBuildJson, readDistBoard, screenEntriesFromBoard } from './page-compiler.js';
 import { readTargetBoard } from './board-source.js';
+import { requireSource } from './compiler-source.js';
+import { articleHtmlFrameFile } from './article-board.js';
 
 // watch 盯的文件类型（review 必须修 2）：build.json 的 deps 记的是 esbuild
 // metafile 的全部输入，esbuild 默认 loader 能打包的 json / ts / tsx / mjs / cjs /
@@ -165,7 +168,7 @@ export function findDrift({ build, exempt = [], pageDir, mtimeOf = liveMtime, bo
  * debounce 窗口）：它们会在自己那一拍重编，不算漂移，免得连续保存把每拍都打成全编。
  * 返回 { all: true } / { all: true, drift: 页相对路径 } / { all: false, screens }。
  */
-export function planPageRecompile(target, changedFiles, { distRoot = defaultDistRoot(), pendingFiles = [] } = {}) {
+export function planPageRecompile(target, changedFiles, { distRoot = defaultDistRoot(), pendingFiles = [], eventKinds = null, onChanges = null } = {}) {
   let screenIds = null;
   let board = null;
   try {
@@ -184,8 +187,59 @@ export function planPageRecompile(target, changedFiles, { distRoot = defaultDist
     changed = changed.filter((file) => relToPage(target.pageDir, file) !== 'index.mdx');
     if (!changed.length) return { all: false, screens: [], noop: true };
   }
+  if (eventKinds && build?.tool !== compilerStamp()) return { all: true };
+  // 只认证有明确 change 来源的批次。旧账目或不完整快照不补读认账，沿原计划走。
+  if (eventKinds && changed.length && build?.tool === compilerStamp()) {
+    const records = new Map();
+    const add = (record) => {
+      if (!record || typeof record.file !== 'string' || !record.file || !Number.isFinite(record.mtimeMs) || typeof record.realpath !== 'string' || !/^[a-f0-9]{64}$/.test(record.sha256)) throw new Error('无完整快照');
+      const list = records.get(record.file) || [];
+      list.push(record); records.set(record.file, list);
+    };
+    try {
+      if (!Number.isFinite(build.builtAt) || !build.errors || Array.isArray(build.errors) || Object.keys(build.errors).length || !build.sources || Array.isArray(build.sources) || Object.keys(build.sources).length !== screenIds.length) throw new Error('非成功产物');
+      const roots = [path.resolve(import.meta.dirname, '../../../content/kits/ios/jsx'), path.resolve(import.meta.dirname, '../../../content/kits/figure'), ...Object.values(target.sources || {})];
+      for (const entry of screenEntriesFromBoard(board)) {
+        const source = build.sources[entry.id];
+        add(source);
+        if (!Array.isArray(source.deps ?? [])) throw new Error('损坏依赖');
+        for (const dep of source.deps || []) add(dep);
+        if (!fs.statSync(path.join(distRoot, target.entryId, `${entry.id}.html`)).isFile()) throw new Error('缺产物');
+        const primary = entry.src ? articleHtmlFrameFile(target, entry)
+          : entry.comp ? (fs.existsSync(path.join(target.pageDir, 'components', `${entry.comp}.jsx`)) ? path.join(target.pageDir, 'components', `${entry.comp}.jsx`) : null)
+            : path.join(target.pageDir, fs.existsSync(path.join(target.pageDir, `${entry.id}.jsx`)) ? `${entry.id}.jsx` : `${entry.id}.html`);
+        if ((entry.src && !primary) || (primary && path.resolve(target.pageDir, source.file) !== path.resolve(primary))) throw new Error('源码候选变了');
+        if (source.resolutions?.some(({ candidates, selected }) => (candidates.find(file => fs.existsSync(path.resolve(target.pageDir, file))) || null) !== selected)) throw new Error('解析候选变了');
+      }
+      if (!article) {
+        if (build.boardInput?.file !== 'board.json') throw new Error('无板快照');
+        add(build.boardInput);
+      }
+      // 所有输入仍须在原登记根内，且保留原 realpath 身份；共享输入逐屏核对。
+      for (const [file, list] of records) {
+        const real = fs.realpathSync(requireSource(target, file, roots));
+        if (list.some(record => record.realpath !== real)) throw new Error('输入身份变了');
+      }
+    } catch { return { all: true }; }
+    changed = changed.filter(file => {
+      if (typeof file !== 'string' || eventKinds.get(file) !== 'change') return true;
+      const rel = relToPage(target.pageDir, file);
+      const list = records.get(rel);
+      if (!list) return true;
+      try {
+        const sha256 = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+        return list.some(record => record.sha256 !== sha256);
+      } catch { return true; }
+    });
+    if (!changed.length) {
+      if (onChanges) onChanges(changed);
+      const drift = findDrift({ build, exempt: [...changedFiles, ...pendingFiles], pageDir: target.pageDir, boardFile: article ? null : 'board.json' });
+      return drift ? { all: true, drift } : { all: false, screens: [], noop: true };
+    }
+  }
+  if (onChanges) onChanges(changed);
   const plan = planRecompile({ build, changedFiles: changed, screenIds, pageDir: target.pageDir });
   if (plan.all) return plan;
-  const drift = findDrift({ build, exempt: [...changed, ...pendingFiles], pageDir: target.pageDir, boardFile: article ? null : 'board.json' });
+  const drift = findDrift({ build, exempt: [...(changedFiles || []), ...pendingFiles], pageDir: target.pageDir, boardFile: article ? null : 'board.json' });
   return drift ? { all: true, drift } : plan;
 }

@@ -281,6 +281,13 @@ describe('comp 屏（variants 墙）', () => {
     assert.match(html, /data-pp-comp="Bubble"/);
     const build = JSON.parse(fs.readFileSync(distFile(target, 'build.json'), 'utf8'));
     assert.match(build.sources['b-in'].file, /content\/kits\/ios\/jsx\/Bubble\.jsx$/);
+    const { planPageRecompile } = await import('./recompile-plan.js');
+    const file = path.join(target.pageDir, 'board.json');
+    const options = { distRoot: path.join(tmp, 'dist'), eventKinds: new Map([[file, 'change']]) };
+    assert.equal(planPageRecompile(target, [file], options).noop, true);
+    fs.mkdirSync(path.join(target.pageDir, 'components'));
+    fs.writeFileSync(path.join(target.pageDir, 'components', 'Bubble.jsx'), 'export function Bubble(){return <div>local</div>}');
+    assert.deepEqual(planPageRecompile(target, [file], options), { all: true }, '本篇新增候选优先于 kit');
   });
 
   test('找不到组件的屏报错，其他屏照常', async () => {
@@ -912,3 +919,73 @@ test('script / style 的字符串子节点不做实体转义（R4 B5 发现）�
   assert.match(html, /<p[^>]*>1 &lt; 2 &amp; 3 > 2<\/p>/);
 });
 
+
+test('输入快照来自供编译的 bytes：读取后保存 v2，不给 v1 产物认新账（JSX/HTML/board）', async (t) => {
+  const { createHash } = await import('node:crypto');
+  const { planPageRecompile } = await import('./recompile-plan.js');
+  const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+  for (const kind of ['jsx', 'html', 'board']) {
+    await t.test(kind, async (t) => {
+      const v1 = kind === 'jsx' ? 'export default function F(){return <div>v1</div>}\n' : '<div>v1</div>\n';
+      const target = makePage(`race-${kind}`, { board: BASIC_BOARD, files: { [`home.${kind === 'jsx' ? 'jsx' : 'html'}`]: v1 } });
+      const input = path.join(target.pageDir, kind === 'board' ? 'board.json' : `home.${kind}`);
+      const realInput = fs.realpathSync(input);
+      const old = fs.readFileSync(input);
+      const newer = kind === 'board' ? old.toString().replace('Main', 'Next') : v1.replace('v1', 'v2');
+      const read = fs.readFileSync;
+      let swapped = false;
+      t.mock.method(fs, 'readFileSync', function (file, ...args) {
+        const bytes = read.call(this, file, ...args);
+        if (!swapped && typeof file === 'string' && path.resolve(file) === realInput) {
+          swapped = true; fs.writeFileSync(input, newer);
+        }
+        return bytes;
+      });
+      const distRoot = path.join(tmp, 'dist');
+      const result = await compilePage(target, { distRoot });
+      assert.equal(result.ok, true, JSON.stringify(result));
+      assert.equal(swapped, true);
+      const build = JSON.parse(read(distFile(target, 'build.json')));
+      assert.equal((kind === 'board' ? build.boardInput : build.sources.home).sha256, hash(old));
+      if (kind !== 'board') assert.match(read(distFile(target, 'home.html'), 'utf8'), /v1/);
+      const plan = planPageRecompile(target, [input], { distRoot, eventKinds: new Map([[input, 'change']]) });
+      assert.deepEqual(plan, kind === 'board' ? { all: true } : { all: false, screens: ['home'] });
+      t.mock.restoreAll();
+    });
+  }
+});
+
+test('接管 onLoad 保留默认 loader、相对 import 与文件行号诊断', async () => {
+  const target = makePage('loaders', {
+    board: BASIC_BOARD,
+    files: {
+      'home.jsx': `import data from './data.json';
+import { ts } from './typed.ts';
+import { View } from './View.tsx';
+import { js } from './plain.js';
+import { mjs } from './module.mjs';
+import cjs from './common.cjs';
+import { mts } from './module.mts';
+import { cts } from './common.cts';
+export default function F(){return <div>{data.text}{ts}<View />{js}{mjs}{cjs.text}{mts}{cts}</div>}
+`,
+      'data.json': '{"text":"JSON"}',
+      'typed.ts': 'export const ts: string = "TS";',
+      'View.tsx': 'export function View(){return <span>TSX</span>}',
+      'plain.js': 'export const js = "JS";',
+      'module.mjs': 'export const mjs = "MJS";',
+      'common.cjs': 'module.exports = {text: "CJS"};',
+      'module.mts': 'export const mts: string = "MTS";',
+      'common.cts': 'export const cts: string = "CTS";',
+    },
+  });
+  const distRoot = path.join(tmp, 'dist');
+  const result = await compilePage(target, { distRoot });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  const html = fs.readFileSync(distFile(target, 'home.html'), 'utf8');
+  for (const text of ['JSON', 'TS', 'TSX', 'JS', 'MJS', 'CJS', 'MTS', 'CTS']) assert.ok(html.includes(text), text);
+  fs.writeFileSync(path.join(target.pageDir, 'typed.ts'), 'export const ts: = ;');
+  const failed = await compilePage(target, { distRoot });
+  assert.equal(failed.ok, false);
+  assert.match(failed.screens[0].error, /typed\.ts:1:/);
+});

@@ -296,9 +296,9 @@ function figureHelperPlugin() {
   };
 }
 
-function pluginsFor(target, inputMtimes = null, resolutions = null) {
+function pluginsFor(target, inputs = null, resolutions = null) {
   const plugins = target && target.kind === 'article' ? [articleComponentsPlugin(target, resolutions), kitJsxPlugin(), figureHelperPlugin()] : [kitJsxPlugin()];
-  return [...plugins, sourceBoundaryPlugin(target, COMPILER_ROOTS, inputMtimes)];
+  return [...plugins, sourceBoundaryPlugin(target, COMPILER_ROOTS, inputs)];
 }
 
 // 帧 bundle（cjs）里仅有的三个外部 require，映射回进程里已加载的模块 —— 帧与
@@ -377,12 +377,17 @@ function formatBuildFailure(error) {
  * 编译期定型，不记进 sources 的话 kit 改动后 distStatus 恒报 fresh。页内文件记
  * 相对路径，页外（kit）记 ../ 链 —— distStatus 用 pageDir join 解析两者。
  */
-function depRecordsFromInputs(target, inputs, exclude, inputMtimes = null) {
+function depRecordsFromInputs(target, metaInputs, exclude, inputs = null) {
   const skipped = new Set(exclude);
   const out = [];
-  for (const input of Object.keys(inputs)) {
+  for (const input of Object.keys(metaInputs)) {
     if (skipped.has(input)) continue;
-    const abs = path.resolve(target.pageDir, input);
+    const abs = path.resolve(fs.realpathSync(target.pageDir), input);
+    const consumed = inputs?.get(abs)?.record;
+    if (consumed) {
+      out.push({ file: path.relative(fs.realpathSync(target.pageDir), abs).split(path.sep).join('/'), ...consumed });
+      continue;
+    }
     let stat;
     try {
       stat = fs.statSync(requireSource(target, abs, COMPILER_ROOTS));
@@ -390,13 +395,13 @@ function depRecordsFromInputs(target, inputs, exclude, inputMtimes = null) {
       continue;
     }
     if (!stat.isFile()) continue;
-    out.push({ file: path.relative(target.pageDir, abs).split(path.sep).join('/'), mtimeMs: inputMtimes?.get(fs.realpathSync(abs)) ?? stat.mtimeMs });
+    out.push({ file: path.relative(fs.realpathSync(target.pageDir), abs).split(path.sep).join('/'), ...(inputs?.get(abs)?.record || { mtimeMs: stat.mtimeMs }) });
   }
   return out;
 }
 
 async function compileJsxScreen(target, screenId, file) {
-  const inputMtimes = new Map();
+  const inputs = new Map();
   const resolutions = [];
   const failed = (row) => ({
     ...row, resolutions,
@@ -417,7 +422,7 @@ async function compileJsxScreen(target, screenId, file) {
       external: ['preact', 'preact/jsx-dev-runtime', 'pp-jsx-runtime/jsx-dev-runtime'],
       metafile: true,
       logLevel: 'silent',
-      plugins: pluginsFor(target, inputMtimes, resolutions),
+      plugins: pluginsFor(target, inputs, resolutions),
     });
   } catch (error) {
     return failed({ ok: false, error: formatBuildFailure(error), diagnostics: buildFailureDiagnostics(error, target.pageDir) });
@@ -427,7 +432,7 @@ async function compileJsxScreen(target, screenId, file) {
     if (!/\.jsx$/.test(input)) continue;
     let text;
     try {
-      text = fs.readFileSync(requireSource(target, input, COMPILER_ROOTS), 'utf8');
+      text = inputs.get(path.resolve(fs.realpathSync(target.pageDir), input))?.contents.toString('utf8') ?? fs.readFileSync(requireSource(target, input, COMPILER_ROOTS), 'utf8');
     } catch {
       continue;
     }
@@ -451,7 +456,8 @@ async function compileJsxScreen(target, screenId, file) {
     return {
       ok: true,
       html: renderFrameHtml(h(__ppWrapComponent(mod.default), {}), target.pageDir),
-      deps: depRecordsFromInputs(target, built.metafile.inputs, [file], inputMtimes),
+      input: inputs.get(path.resolve(fs.realpathSync(target.pageDir), file))?.record,
+      deps: depRecordsFromInputs(target, built.metafile.inputs, [file], inputs),
       resolutions,
     };
   } catch (error) {
@@ -462,13 +468,18 @@ async function compileJsxScreen(target, screenId, file) {
 
 function compileHtmlScreen(target, screenId, file) {
   let html;
+  let input;
   try {
     // 显式登记的 source 只供 HTML 帧使用；JSX import 不因此获得跨根权限。
-    html = fs.readFileSync(requireSource(target, file, Object.values(target.sources || {})), 'utf8');
+    const source = fs.realpathSync(requireSource(target, file, Object.values(target.sources || {})));
+    const mtimeMs = fs.statSync(source).mtimeMs;
+    const bytes = fs.readFileSync(source);
+    html = bytes.toString('utf8');
+    input = { mtimeMs, realpath: fs.realpathSync(source), sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
   } catch (error) {
     return { ok: false, error: `${file}: ${String((error && error.message) || error)}` };
   }
-  return { ok: true, html };
+  return { ok: true, html, input };
 }
 
 /** board.json assets 注入：css 帧开头 / js 帧末尾。assets 数组先自去重（R10），
@@ -555,6 +566,7 @@ async function compileScreen(target, entry, options = {}) {
     result = { ok: false, error: error.message };
   }
   // 帧的 import 依赖（页内组件 / kit 印章）一并记进 sources（review R2）。
+  if (result.input && source) source = { ...source, ...result.input };
   if (result.deps && source) source = { ...source, deps: result.deps };
   if (result.resolutions && source) source = { ...source, resolutions: result.resolutions };
   if (result.ok && !result.document) result.html = injectAssets(result.html, options.assets || {}, target.urlBase);
@@ -572,7 +584,7 @@ async function compileScreen(target, entry, options = {}) {
  * 组件文件本身照常过 lint（非 entry）。
  */
 async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
-  const inputMtimes = new Map();
+  const inputs = new Map();
   const resolutions = [];
   const { id, comp, props } = entry;
   const pageComp = path.join(target.pageDir, 'components', `${comp}.jsx`);
@@ -607,6 +619,7 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
     '',
   ].join('\n');
   const sourceRel = path.relative(target.pageDir, sourceAbs).split(path.sep).join('/');
+  resolutions.push({ candidates: [pageComp, kitComp].map(file => path.relative(target.pageDir, file)), selected: sourceRel });
   const sourceMtime = fs.statSync(sourceAbs).mtimeMs;
   const failed = (result) => ({ result, source: {
     file: sourceRel, mtimeMs: sourceMtime, resolutions,
@@ -627,7 +640,7 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
       external: ['preact', 'preact/jsx-dev-runtime', 'pp-jsx-runtime/jsx-dev-runtime'],
       metafile: true,
       logLevel: 'silent',
-      plugins: pluginsFor(target, inputMtimes, resolutions),
+      plugins: pluginsFor(target, inputs, resolutions),
     });
   } catch (error) {
     return failed({ ok: false, error: formatBuildFailure(error) });
@@ -637,7 +650,7 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
     if (!/\.jsx$/.test(input)) continue;
     let text;
     try {
-      text = fs.readFileSync(requireSource(target, input, COMPILER_ROOTS), 'utf8');
+      text = inputs.get(path.resolve(fs.realpathSync(target.pageDir), input))?.contents.toString('utf8') ?? fs.readFileSync(requireSource(target, input, COMPILER_ROOTS), 'utf8');
     } catch {
       continue;
     }
@@ -652,10 +665,10 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
       return failed({ ok: false, error: `${id}: 组件 ${comp} 在 ${sourceDesc} 里没有命名导出或默认导出` });
     }
     const html = renderFrameHtml(h(__ppWrapComponent(mod.default), {}), target.pageDir);
-    const deps = depRecordsFromInputs(target, built.metafile.inputs, ['__comp__.jsx', sourceRel], inputMtimes);
+    const deps = depRecordsFromInputs(target, built.metafile.inputs, ['__comp__.jsx', sourceRel], inputs);
     return {
       result: { ok: true, html },
-      source: { file: sourceRel, mtimeMs: inputMtimes.get(fs.realpathSync(sourceAbs)) ?? fs.statSync(sourceAbs).mtimeMs, resolutions, ...(deps.length ? { deps } : {}) },
+      source: { file: sourceRel, ...((inputs.get(path.resolve(sourceAbs)) || inputs.get(path.resolve(fs.realpathSync(target.pageDir), sourceRel)))?.record || { mtimeMs: sourceMtime }), resolutions, ...(deps.length ? { deps } : {}) },
     };
   } catch (error) {
     return failed({ ok: false, error: `${sourceDesc}: ${String((error && error.message) || error)}` });
@@ -766,10 +779,11 @@ async function compilePageNow(target, options = {}) {
   const writeDist = options.writeDist !== false;
   const started = performance.now();
   let board;
+  let boardInput = target.kind === 'article' ? null : {};
   let boardMtimeMs = null;
   try {
-    if (target.kind !== 'article') boardMtimeMs = fs.statSync(path.join(target.pageDir, 'board.json')).mtimeMs;
-    board = readTargetBoard(target);
+    board = readTargetBoard(target, boardInput);
+    boardMtimeMs = boardInput?.mtimeMs ?? null;
   } catch (error) {
     return { entryId: target.entryId, ok: false, builtAt: null, ms: 0, screens: [], error: boardReadError(target, error) };
   }
@@ -831,6 +845,8 @@ async function compilePageNow(target, options = {}) {
     let mergedErrors = errors;
     if (onlyScreens) {
       const old = readBuildJson(distRoot, target.entryId) || {};
+      // 单屏编译不能替未编兄弟认证新版板（assets/props 可能还留在旧产物中）。
+      if (boardInput && (old.tool !== compilerStamp() || old.boardInput?.sha256 !== boardInput.sha256 || old.boardInput?.realpath !== boardInput.realpath)) boardInput = null;
       mergedSources = { ...(old.sources || {}), ...sources };
       mergedErrors = { ...(old.errors || {}) };
       for (const entry of picked) {
@@ -851,6 +867,7 @@ async function compilePageNow(target, options = {}) {
     fs.writeFileSync(buildPath, JSON.stringify({
       builtAt: 0,
       boardMtimeMs,
+      ...(boardInput ? { boardInput } : {}),
       tool: compilerStamp(),
       sources: mergedSources,
       errors: mergedErrors,
@@ -859,6 +876,7 @@ async function compilePageNow(target, options = {}) {
     fs.writeFileSync(buildPath, JSON.stringify({
       builtAt,
       boardMtimeMs,
+      ...(boardInput ? { boardInput } : {}),
       tool: compilerStamp(),
       sources: mergedSources,
       errors: mergedErrors,

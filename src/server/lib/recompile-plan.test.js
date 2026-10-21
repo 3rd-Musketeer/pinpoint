@@ -134,6 +134,7 @@ describe('planPageRecompile：读盘包装', () => {
     const distRoot = path.join(tmp, 'dist');
     await compilePage(target, { distRoot });
     const changed = path.join(target.pageDir, 'a.html');
+    fs.writeFileSync(changed, '<div class="ios-app">a2</div>\n');
     // 改 a → 计划是 [a]；拿这个计划走增量编译，b 的产物不被重写。
     const before = fs.statSync(path.join(distRoot, 'real-page', 'b.html')).mtimeMs;
     const plan = planPageRecompile(target, [changed], { distRoot });
@@ -220,7 +221,7 @@ describe('planPageRecompile：漂移校验把 watch 漏掉的改动拉回全编�
   // 走一拍 watch 的完整流程：算计划 → 按计划编 → 回报计划与编完后的 stale。
   async function beat(page, changed, extra = {}) {
     const plan = planPageRecompile(page.target, changed.map((rel) => path.join(page.pageDir, rel)), { distRoot: page.distRoot, ...extra });
-    await compilePage(page.target, { distRoot: page.distRoot, ...(plan.all ? {} : { onlyScreens: plan.screens }) });
+    if (!plan.noop) await compilePage(page.target, { distRoot: page.distRoot, ...(plan.all ? {} : { onlyScreens: plan.screens }) });
     return { plan, stale: distStatus(page.target.entryId, page.pageDir, { distRoot: page.distRoot }).stale };
   }
 
@@ -300,4 +301,107 @@ describe('planPageRecompile：漂移校验把 watch 漏掉的改动拉回全编�
     assert.equal(second.stale, false);
     assert.equal(fs.statSync(path.join(page.distRoot, 'pending', 'c.html')).mtimeMs, cBefore, '没改的屏不重编');
   });
+});
+
+test('已消费 change：混批只编真改稿；同戳字节、共享依赖与板各按原范围更新', async () => {
+  const pageDir = path.join(tmp, 'consumed');
+  const distRoot = path.join(tmp, 'dist');
+  fs.mkdirSync(path.join(pageDir, 'components'), { recursive: true });
+  const write = (file, text) => fs.writeFileSync(path.join(pageDir, file), text);
+  const frame = (text) => `import { Chip } from './components/Chip.jsx';\nexport default function F(){return <div>${text}<Chip /></div>}\n`;
+  const chip = (text) => `export function Chip(){return <span>${text}</span>}\n`;
+  const board = JSON.stringify({ sections: [{ id: 's', title: 'one', screens: [{ id: 'alpha' }, { id: 'beta' }] }] });
+  write('board.json', board);
+  write('alpha.jsx', frame('a1')); write('beta.jsx', frame('b1')); write('components/Chip.jsx', chip('c1'));
+  for (const file of ['board.json', 'alpha.jsx', 'beta.jsx', 'components/Chip.jsx']) fs.utimesSync(path.join(pageDir, file), 1700000000, 1700000000);
+  const target = { entryId: 'consumed', pageDir, kind: 'dir', urlBase: '/sites/consumed/' };
+  const compiled = await compilePage(target, { distRoot });
+  assert.equal(compiled.ok, true);
+  const files = ['board.json', 'beta.jsx', 'components/Chip.jsx', 'alpha.jsx'].map(file => path.join(pageDir, file));
+  const options = { distRoot, eventKinds: new Map(files.map(file => [file, 'change'])) };
+  const plan = () => planPageRecompile(target, files, options);
+  const buildPath = path.join(distRoot, 'consumed', 'build.json');
+  const before = fs.readFileSync(buildPath, 'utf8');
+  assert.deepEqual(plan(), { all: false, screens: [], noop: true });
+  assert.equal(fs.readFileSync(buildPath, 'utf8'), before);
+  const sameStamp = (file, text) => {
+    const abs = path.join(pageDir, file); const stat = fs.statSync(abs);
+    write(file, text); fs.utimesSync(abs, stat.atimeMs / 1000, stat.mtimeMs / 1000);
+    assert.equal(fs.statSync(abs).mtimeMs, stat.mtimeMs, '精确相同 mtime');
+    assert.equal(fs.statSync(abs).size, stat.size, '精确相同 size');
+  };
+  sameStamp('alpha.jsx', frame('a2'));
+  assert.deepEqual(plan(), { all: false, screens: ['alpha'] });
+  const betaPath = path.join(distRoot, 'consumed', 'beta.html');
+  const betaStat = fs.statSync(betaPath);
+  await compilePage(target, { distRoot, onlyScreens: ['alpha'] });
+  assert.equal(fs.statSync(betaPath).mtimeMs, betaStat.mtimeMs);
+  assert.match(fs.readFileSync(path.join(distRoot, 'consumed', 'alpha.html'), 'utf8'), /a2/);
+  sameStamp('components/Chip.jsx', chip('c2'));
+  assert.deepEqual(plan(), { all: false, screens: ['alpha', 'beta'] });
+  await compilePage(target, { distRoot, onlyScreens: ['alpha'] });
+  assert.deepEqual(plan(), { all: false, screens: ['alpha', 'beta'] }, '未编兄弟不能继承共享依赖的新摘要');
+  await compilePage(target, { distRoot });
+  sameStamp('board.json', board.replace('one', 'two'));
+  assert.deepEqual(plan(), { all: true });
+  await compilePage(target, { distRoot, onlyScreens: ['alpha'] });
+  assert.deepEqual(plan(), { all: true }, '部分编译不能给兄弟认证新版板');
+  await compilePage(target, { distRoot });
+  options.eventKinds.set(files[0], 'add');
+  assert.deepEqual(plan(), { all: true }, 'add 不能过滤为重复 change');
+  options.eventKinds.set(files[0], 'change');
+  const build = JSON.parse(fs.readFileSync(buildPath));
+  delete build.sources.beta.sha256;
+  fs.writeFileSync(buildPath, JSON.stringify(build));
+  assert.deepEqual(plan(), { all: true }, '混合不完整账目保守');
+});
+
+test('过滤前健康门：旧/坏账目、失败、缺输入或产物、新文件与身份/候选变化均不 noop', async () => {
+  const pageDir = path.join(tmp, 'guards'); const distRoot = path.join(tmp, 'dist');
+  fs.mkdirSync(pageDir, { recursive: true });
+  const write = (file, bytes) => fs.writeFileSync(path.join(pageDir, file), bytes);
+  write('board.json', JSON.stringify({ sections: [{ id: 's', screens: [{ id: 'a' }, { id: 'b' }] }] }));
+  write('a.html', '<div>a</div>'); write('b.html', '<div>b</div>');
+  const target = { entryId: 'guards', pageDir, kind: 'dir', urlBase: '/sites/guards/' };
+  await compilePage(target, { distRoot });
+  const a = path.join(pageDir, 'a.html');
+  const eventKinds = new Map([[a, 'change']]);
+  const plan = files => planPageRecompile(target, files || [a], { distRoot, eventKinds });
+  assert.equal(plan().noop, true);
+  const buildPath = path.join(distRoot, 'guards', 'build.json');
+  const good = fs.readFileSync(buildPath, 'utf8');
+  for (const mutate of [
+    build => { delete build.sources.a.sha256; },
+    build => { delete build.boardInput; },
+    build => { build.tool = 'old'; },
+    build => { build.errors.b = 'failed'; },
+    build => { build.sources.b.deps = {}; },
+    build => { build.sources.b.mtimeMs = null; },
+  ]) {
+    const build = JSON.parse(good); mutate(build); fs.writeFileSync(buildPath, JSON.stringify(build));
+    assert.deepEqual(plan(), { all: true });
+  }
+  fs.writeFileSync(buildPath, '{broken'); assert.deepEqual(plan(), { all: true });
+  fs.writeFileSync(buildPath, good);
+  const bDist = path.join(distRoot, 'guards', 'b.html');
+  fs.rmSync(bDist); assert.deepEqual(plan(), { all: true }); fs.writeFileSync(bDist, '<div>b</div>');
+  fs.rmSync(path.join(pageDir, 'b.html')); assert.deepEqual(plan(), { all: true }); write('b.html', '<div>b</div>');
+  await compilePage(target, { distRoot });
+  const unknown = path.join(pageDir, 'new.jsx'); eventKinds.set(unknown, 'change');
+  write('new.jsx', 'export default function F(){return <div/>}');
+  assert.deepEqual(plan([unknown]), { all: true });
+  fs.rmSync(unknown);
+  // b.html 的相同 bytes 改由另一个真实路径提供，不能用 a 的重复事件绕过身份校验。
+  write('b-copy.html', '<div>b</div>'); fs.rmSync(path.join(pageDir, 'b.html'));
+  fs.symlinkSync(path.join(pageDir, 'b-copy.html'), path.join(pageDir, 'b.html'));
+  assert.deepEqual(plan(), { all: true });
+  fs.rmSync(path.join(pageDir, 'b.html')); write('b.html', '<div>b</div>');
+  await compilePage(target, { distRoot });
+  write('b.jsx', 'export default function F(){return <div>jsx</div>}');
+  assert.deepEqual(plan(), { all: true }, '新 JSX 优先于已消费 HTML');
+  fs.rmSync(path.join(pageDir, 'b.jsx'));
+  // 全过滤后仍执行原 drift 门：未收到事件的 b 改动不能被重复 a 掩盖。
+  write('b.html', '<div>b2</div>');
+  fs.utimesSync(path.join(pageDir, 'b.html'), new Date(0), new Date(0));
+  assert.deepEqual(plan(), { all: true, drift: 'b.html' });
 });

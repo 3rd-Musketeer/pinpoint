@@ -91,20 +91,21 @@ function printBuildResult(result, { out, err }, plan = null) {
 export function startPageWatch(target, onResult, { debounceMs = 120, distRoot, onError = null } = {}) {
   let timer = null;
   let running = Promise.resolve();
-  const pending = new Set();
+  const pending = new Map();
   const reportError = onError || ((error) => console.error(`[pp2] 编译 ${target.entryId} 异常：${(error && error.message) || error}`));
-  const watcher = fs.watch(target.pageDir, { recursive: true }, (_event, filename) => {
+  const watcher = fs.watch(target.pageDir, { recursive: true }, (event, filename) => {
     const abs = filename ? path.resolve(target.pageDir, String(filename)) : null;
     if (abs && !isWatchedSource(abs, { distRoot })) return;
     // 平台拿不到文件名时存 null：planRecompile 对拿不准的批次回落全编。
-    pending.add(abs);
+    pending.set(abs, pending.has(abs) && pending.get(abs) !== 'change' ? pending.get(abs) : event);
     clearTimeout(timer);
     timer = setTimeout(() => {
-      const batch = [...pending];
+      const eventKinds = new Map(pending);
+      const batch = [...eventKinds.keys()];
       pending.clear();
       running = running.then(async () => {
         const options = distRoot ? { distRoot } : {};
-        const plan = planPageRecompile(target, batch, { ...options, pendingFiles: [...pending].filter(Boolean) });
+        const plan = planPageRecompile(target, batch, { ...options, eventKinds, pendingFiles: [...pending.keys()].filter(Boolean) });
         // 文章画布：这一拍只改了正文、画布没变 → 不编。
         if (plan.noop) return undefined;
         if (!plan.all) options.onlyScreens = plan.screens;

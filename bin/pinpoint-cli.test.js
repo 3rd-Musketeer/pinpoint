@@ -3225,3 +3225,35 @@ test('空字符串 positional 是用法错，报出哪一段是空的（R5 B8：
   assert.equal(await run(['build', ''], io), 2);
   assert.match(rec.err.join('\n'), /build 的参数不能是空字符串/);
 });
+
+test('startPageWatch：重复 change 零编译，rename/unknown 与混合来源保持保守', async (t) => {
+  const made = makeCompiledPage(t, { screens: [{ id: 'a' }, { id: 'b' }], files: { 'a.html': '<div>a1</div>', 'b.html': '<div>b1</div>' } });
+  const rec = recorder();
+  assert.equal(await runBuild(['build', 't-page', '--registry', made.registry], { ...rec.io, env: made.env }), 0);
+  const distRoot = path.join(made.env.PINPOINT_DATA_DIR, 'dist');
+  const buildPath = path.join(distRoot, 't-page', 'build.json');
+  const before = fs.readFileSync(buildPath, 'utf8'); const stamp = fs.statSync(buildPath).mtimeMs;
+  const watch = captureFsWatch(t);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const results = [];
+  const target = { entryId: 't-page', pageDir: made.page, urlBase: '/sites/t-page/', kind: 'dir' };
+  const task = startPageWatch(target, (result) => results.push(result), { debounceMs: 10, distRoot });
+  t.after(() => task.watcher.close());
+  const flush = async () => { t.mock.timers.tick(11); await task.done(); };
+  watch.deliver('board.json'); watch.deliver('a.html'); watch.deliver('b.html');
+  await flush();
+  assert.equal(results.length, 0);
+  assert.equal(fs.readFileSync(buildPath, 'utf8'), before);
+  assert.equal(fs.statSync(buildPath).mtimeMs, stamp);
+  watch.deliver('board.json', 'rename'); watch.deliver('board.json', 'change');
+  await flush();
+  assert.equal(results.length, 1); assert.equal(results[0].partial, false);
+  watch.deliver(null, 'rename');
+  await flush();
+  assert.equal(results.length, 2); assert.equal(results[1].partial, false);
+  fs.writeFileSync(path.join(made.page, 'a.html'), '<div>a2</div>');
+  watch.deliver('board.json'); watch.deliver('b.html'); watch.deliver('a.html');
+  await flush();
+  assert.deepEqual(results[2].screens.map(row => row.id), ['a']);
+  assert.match(fs.readFileSync(path.join(distRoot, 't-page', 'a.html'), 'utf8'), /a2/);
+});

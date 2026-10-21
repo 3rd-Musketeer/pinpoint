@@ -120,3 +120,18 @@ test('判定优先序：条目 → 模板页 → 文章；非法 id 与陌生 id
   // 条目 id 与文章页 id 撞名（条目 id 不含 _，构造上撞不了；这里只守「条目先认」）
   assert.equal(resolveBoardSource('with-board', { registry, root }).kind, 'dir');
 });
+
+test('文章组件候选切换：主帧没改但本篇覆盖出现，重复 change 不能 noop', async (t) => {
+  const { compilePage } = await import('./page-compiler.js');
+  const { planPageRecompile } = await import('./recompile-plan.js');
+  const { dir, registry } = fixture(t);
+  const target = resolvePageTarget('demo_flow', { registry });
+  const frame = path.join(target.pageDir, 'ask-open.jsx');
+  write(frame, "import { Bubble } from './components/Bubble.jsx';\nexport default function F(){return <Bubble side=\"incoming\" />}\n");
+  const distRoot = path.join(dir, 'dist');
+  assert.equal((await compilePage(target, { distRoot })).ok, true);
+  const options = { distRoot, eventKinds: new Map([[frame, 'change']]) };
+  assert.equal(planPageRecompile(target, [frame], options).noop, true);
+  write(path.join(target.pageDir, 'components', 'Bubble.jsx'), 'export function Bubble(){return <div>local</div>}');
+  assert.deepEqual(planPageRecompile(target, [frame], options), { all: true });
+});

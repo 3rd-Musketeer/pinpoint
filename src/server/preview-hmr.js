@@ -178,32 +178,33 @@ export default function previewHmr(options = {}) {
   // 通知一次编译只有一条（合入同一次编译的事件不再各发一条）：sidecar .js 进过
   // pending 就 full-reload，否则 preview:update 带上本次重编的屏清单（整页重编过
   // / 编译异常 → 不带，客户端整板重摆）；全是 noop（只改正文）不通知。
-  function recompile(server, target, files) {
+  function recompile(server, target, files, event = 'change') {
     if (!target) return Promise.resolve(null);
     const inflight = compiling.get(target.entryId);
     if (inflight) {
       for (const file of files || []) {
-        inflight.pending.add(file);
-        if (/\.js$/.test(file)) inflight.fullReload = true;
+        inflight.pending.set(file, inflight.pending.has(file) && inflight.pending.get(file) !== 'change' ? inflight.pending.get(file) : event);
       }
       return inflight.promise;
     }
-    const state = { pending: new Set(), promise: null, full: false, screens: new Set(), compiled: false, fullReload: false };
+    const state = { pending: new Map(), promise: null, full: false, screens: new Set(), compiled: false, fullReload: false };
     // 进函数就登记：收集窗内到达的下一拍要看到这次编译还在飞，并进 pending，
     // 而不是 map 还空着、自己再开一次编译。
     compiling.set(target.entryId, state);
     for (const file of files || []) {
-      state.pending.add(file);
-      if (/\.js$/.test(file)) state.fullReload = true;
+      state.pending.set(file, event);
     }
     const runOnce = async () => {
-      const changed = [...state.pending];
+      const eventKinds = new Map(state.pending);
+      const changed = [...eventKinds.keys()];
       state.pending.clear();
       try {
         const options = distRoot ? { distRoot } : {};
-        const plan = planPageRecompile(target, changed, options);
+        let effective = changed;
+        const plan = planPageRecompile(target, changed, { ...options, eventKinds, onChanges: files => { effective = files; } });
         // 文章画布：只改了正文、画布没变 → 不编（站点自己有 HMR）。
         if (plan.noop) return { noop: true };
+        if (effective.some(file => /\.js$/.test(file))) state.fullReload = true;
         if (plan.drift) console.log(`[pp2] ${target.entryId}：${plan.drift} 变了但没收到 watch 事件，整页重编`);
         if (!plan.all) options.onlyScreens = plan.screens;
         const result = await compilePage(target, options);
@@ -253,8 +254,8 @@ export default function previewHmr(options = {}) {
     return state.promise;
   }
 
-  function recompileArticles(server, targets, file) {
-    return Promise.all(targets.map((target) => recompile(server, target, [file]))).then(() => []);
+  function recompileArticles(server, targets, file, event = 'change') {
+    return Promise.all(targets.map((target) => recompile(server, target, [file], event))).then(() => []);
   }
 
   // Vite 6 只对“改了”的文件调 handleHotUpdate；新建、删除走 watcher 的 add/unlink，
@@ -269,21 +270,25 @@ export default function previewHmr(options = {}) {
   // 不通知页（删除的编译语义不在此重设计）。
   function onProjectFileAddOrRemove(server, file, removed) {
     file = resolveEventPath(file);
+    // 保留已有删除语义（不单独开编），但同批已排队的 change 不能盖掉 unlink。
+    if (removed) for (const state of compiling.values()) {
+      if (state.pending.has(file)) state.pending.set(file, 'unlink');
+    }
     const inProject = projectDirs().some((project) => file.startsWith(project.dir + path.sep));
     if (inProject) notifyProjectChange(server, file);
     if (removed || !isWatchedSource(file, { distRoot: distRoot || defaultDistRoot() })) return Promise.resolve([]);
     if (inProject) {
       const targets = articleTargetsFor(file);
-      return targets.length ? recompileArticles(server, targets, file) : Promise.resolve([]);
+      return targets.length ? recompileArticles(server, targets, file, 'add') : Promise.resolve([]);
     }
     const preview = file.replace(/\\/g, '/').match(PREVIEWS_FILE);
     if (preview) {
       const target = templateTarget(preview[1]);
-      return target ? recompile(server, target, [file]).then(() => []) : Promise.resolve([]);
+      return target ? recompile(server, target, [file], 'add').then(() => []) : Promise.resolve([]);
     }
     const owner = ownerFor(file);
     const target = owner && owner.kind === 'dir' ? resolvePageTarget(owner.id, { registry, root: ROOT }) : null;
-    return target ? recompile(server, target, [file]).then(() => []) : Promise.resolve([]);
+    return target ? recompile(server, target, [file], 'add').then(() => []) : Promise.resolve([]);
   }
 
   function templateTarget(pageId) {
