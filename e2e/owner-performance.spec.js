@@ -73,10 +73,8 @@ test('owner 性能首开文章：帧请求全为 2xx，请求数最多 206', asy
   const shellRequests = [];
   const pending = new Set();
   // 三类分开数：真实帧文档（/api/frame 精确路径）、/sites/ 资源、每张帧文档都引用的
-  // 共享外壳（/api/frame-shell.css、/api/frame-boot.js，版本摘要进 query）。旧前缀正则
-  // /^\/(api\/frame|sites\/)/ 把两条外壳也算成帧请求（r3 首跑 389 条里约 194 条是外壳，
-  // 外壳 no-cache + ETag 重验证的 304 又被算成非 2xx）。/api/frame* 命名空间只有这三条
-  // 路由（content-routes.js / frame-doc.js），精确匹配不会漏真实帧请求。
+  // 共享外壳（/api/frame-shell.css、/api/frame-boot.js）。/api/frame* 命名空间只有这三条
+  // 路由（content-routes.js / frame-doc.js），精确匹配不漏真实帧请求。
   const SHELL_PATHS = new Set(['/api/frame-shell.css', '/api/frame-boot.js']);
   const pathOf = request => new URL(request.url()).pathname;
   const isShell = request => SHELL_PATHS.has(pathOf(request));
@@ -117,10 +115,12 @@ test('owner 性能首开文章：帧请求全为 2xx，请求数最多 206', asy
   expect.soft(requests.filter(r => r.status < 200 || r.status >= 300), '包含 502 在内的非 2xx 一律失败').toEqual([]);
   expect(requests.length, '确实加载了 97 帧').toBeGreaterThanOrEqual(OWNER_FRAMES);
   expect(requests.length).toBeLessThanOrEqual(OWNER_FRAMES * 2 + 12);
-  // 共享外壳单列：恰好两条已版本化资源（内容摘要进 query，不锁摘要值，一条路径只许
-  // 一个版本）；no-cache + ETag 的缓存 304 合法，4xx/5xx 照拦，网络失败已并入上面的 failed。
+  // 共享外壳单列：恰好两条资源，各一条 URL 且 query 精确为 ?v=<16 位小写 hex>
+  // （frame-doc.js 的版本戳 = contentEtag 前 16 位；形状门不锁摘要值）。no-cache +
+  // ETag 的缓存 304 合法，4xx/5xx 照拦，网络失败已并入上面的 failed。
   const shellUrls = [...new Set(shellRequests.map(r => r.url))].sort();
-  expect.soft(shellUrls.map(u => new URL(u).pathname), '共享外壳恰好是 shell CSS 与 boot JS 各一条版本化 URL').toEqual(['/api/frame-boot.js', '/api/frame-shell.css']);
+  expect.soft(shellUrls.map(u => new URL(u).pathname), '共享外壳恰好是 shell CSS 与 boot JS 各一条 URL').toEqual(['/api/frame-boot.js', '/api/frame-shell.css']);
+  for (const u of shellUrls) expect.soft(new URL(u).search, '外壳 URL 的 query 精确为版本戳').toMatch(/^\?v=[0-9a-f]{16}$/);
   expect.soft(shellRequests.filter(r => r.status !== 304 && (r.status < 200 || r.status >= 300)), '共享外壳只允许 2xx 与缓存 304').toEqual([]);
 });
 

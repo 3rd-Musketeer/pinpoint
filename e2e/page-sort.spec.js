@@ -163,12 +163,13 @@ test('Pages 排序：时间渲染、菜单形态、依据接线与持久化', as
       previousOrder = order;
     }
   } finally {
-    // 收尾：恢复固件原 mtime（B 组报告：压旧的值不许漏给同组后面的 spec 用例；
-    // finally 保证首断言失败也恢复——r3 首跑正是挂在第一个行内时间断言上，
-    // 恢复被跳过）。先 closeSettled 落盘关页，恢复触发的 preview-hmr 重编广播
-    // 就不砸任何活页。恢复后时间渲染回到真实值，「刚刚」那类断言只在压住期间
-    // 成立，不再复验。
-    await closeSettled(page);
-    for (const [target, times] of ORIGINAL_MTIMES) fs.utimesSync(target, times.atime, times.mtime);
+    // 收尾：恢复固件原 mtime（压旧的值不许漏给同组后面的 spec，用例失败也恢复）。
+    // 先 closeSettled 落盘关页再 utimes；关页失败不许跳过恢复，失败本身继续抛。
+    // 恢复后时间渲染回到真实值，「刚刚」那类断言只在压住期间成立，不再复验。
+    try {
+      await closeSettled(page);
+    } finally {
+      for (const [target, times] of ORIGINAL_MTIMES) fs.utimesSync(target, times.atime, times.mtime);
+    }
   }
 });
