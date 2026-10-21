@@ -30,7 +30,7 @@ import { articleSectionSpans } from './article-canvas.js';
 import { articleHtmlFrameFile } from './article-board.js';
 import { resolvePage } from './page-resolve.js';
 import { readTargetBoard, resolvePageTarget } from './board-source.js';
-import { loadRegistry } from './registry.js';
+import { loadRegistry, registryEntry } from './registry.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { normalizeAnnotation, targetContentToDisplay } from '../../shared/annotation-indicator.js';
 import { isProseRow } from '../../shared/prose-thread.js';
@@ -225,7 +225,9 @@ export function loadPageContext({ pageRef, registryPath = null, root = null, dat
     pageId: target.entryId,
     target,
     board,
-    isManifestPage: manifestPageIds(repoRoot).includes(target.entryId),
+    // resolvePage 的优先级：registry 条目在先，manifest 在后。同名时是条目页，
+    // 不能因为 manifest 里也有这个 id 就多给它一块 /previews/ 表面。
+    isManifestPage: !registryEntry(registry, target.entryId) && manifestPageIds(repoRoot).includes(target.entryId),
   });
 }
 

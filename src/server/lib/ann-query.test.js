@@ -171,6 +171,24 @@ test('loadPageContext 一只桶只读一次：孤儿行的账本归属从这一�
   assert.equal(reads.get('@canvas.json'), 1);
 });
 
+test('registry 与 manifest 同名时条目优先：指向 /previews/ 的账本不因同名模板页被判孤儿', () => {
+  const site = makeSite();
+  // dir 页有 board.json，走编译页分支。resolvePage 先认 registry 条目，同名的
+  // manifest 页不该给它一块 /previews/ 表面。
+  fs.mkdirSync(path.join(tmp, 'content', 'previews', 'demo-page'), { recursive: true });
+  fs.writeFileSync(path.join(tmp, 'content', 'previews', '_index.json'), JSON.stringify({ pages: [{ id: 'demo-page' }] }));
+  fs.writeFileSync(path.join(site.dataRoot, 'demo-page', 'previews~demo-page~missing.json'), JSON.stringify({
+    page: 'previews~demo-page~missing', path: '/previews/demo-page/missing.html', revision: 1,
+    annotations: [{ id: 'a', n: 1, type: 'element', status: 'open', content: 'keep', targets: [] }],
+  }));
+  const registryFile = path.join(tmp, 'registry.json');
+  fs.writeFileSync(registryFile, JSON.stringify({ version: 1, entries: [{ id: 'demo-page', kind: 'dir', path: site.pageDir }] }));
+  const ctx = loadPageContext({ pageRef: 'demo-page', registryPath: registryFile, root: tmp, dataRootDir: site.dataRoot });
+  assert.equal(ctx.target.kind, 'dir');
+  assert.deepEqual(ctx.orphanLedgers, []);
+  assert.deepEqual(ctx.orphanRows, []);
+});
+
 describe('anchorComp', () => {
   test('帧根不算、内层组件算', () => {
     const tree = parseHtmlFragment(distFor('home'));
