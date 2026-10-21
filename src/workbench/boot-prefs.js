@@ -203,6 +203,8 @@ export function snapshotPageViewport(pageId) {
   // 否则 afterMount 会误认已有视口而跳过首访聚焦。
   var active = wbGet().activeBoard;
   if (!active || active.pageId !== pageId || !document.querySelector('#wb-board-panel .wb-zoom-wrap')) return;
+  var session = prefsDeps.mountManager && prefsDeps.mountManager.current;
+  if (!session || session.pageId !== pageId || !session.boardReady) return;
   clearTimeout(viewportSaveT);
   viewportSaveT = null;
   flushZoomSave();

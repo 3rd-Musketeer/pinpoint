@@ -340,7 +340,8 @@ startPhoneDocScrollbar(stage);
 setFrameRevealer(revealFrame);
 initBootPrefs({
   resolveBootPageId: resolveBootPageId,
-  applyPageNames: applyPageNames
+  applyPageNames: applyPageNames,
+  mountManager: mountManager
 });
 initPages({
   loadBoard: loadBoard,

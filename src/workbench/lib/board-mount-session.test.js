@@ -74,6 +74,28 @@ test('previewsSettled 与 boardSettled 各落各的：几何先好、脚本后�
   assert.equal(await session.previewsSettled, true);
 });
 
+test('boardReady 只读且与 boardSettled 共用首次落定，取消会撤销可用性', async () => {
+  const manager = new BoardMountManager();
+  const session = manager.begin('library');
+  assert.equal(session.boardReady, false);
+  assert.throws(() => { session.boardReady = true; }, TypeError);
+  session.settlePreviews(true);
+  assert.equal(session.boardReady, false, '脚本就绪不能替代几何与聚焦落定');
+  session.settleBoard(true);
+  assert.equal(session.boardReady, true);
+  assert.equal(await session.boardSettled, true);
+  session.settleBoard(false);
+  assert.equal(session.boardReady, true, '重复落定不能与已完成的Promise分叉');
+  manager.begin('other-page');
+  assert.equal(session.boardReady, false);
+  assert.equal(await session.boardSettled, true, '已兑现Promise保留其原结果');
+  const failed = manager.current;
+  failed.settleBoard(false);
+  failed.settleBoard(true);
+  assert.equal(failed.boardReady, false);
+  assert.equal(await failed.boardSettled, false);
+});
+
 test('disposeWithin 只卸载这块子树里挂的脚本，别的留到会话取消', () => {
   const session = new BoardMountSession(1, 'p');
   const inside = { isConnected: true };

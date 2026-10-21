@@ -54,7 +54,10 @@ const boot = await import('./boot-prefs.js');
 const { wbGet, wbSet } = await import('./app/store.js');
 const { savePrefs, readPrefs } = await import('./lib/prefs.js');
 const { pageViewport } = await import('./lib/page-viewports.js');
+const { BoardMountManager } = await import('./lib/board-mount-session.js');
 hooks.deregister();
+const manager = new BoardMountManager();
+boot.initBootPrefs({ mountManager: manager });
 
 function boardState(pageId = 'e2e-anchor', tabId = null, shell = 'app') {
   return { pageId, tabId, board: {
@@ -63,6 +66,7 @@ function boardState(pageId = 'e2e-anchor', tabId = null, shell = 'app') {
   } };
 }
 function reset() {
+  manager.cancel();
   while (frames.length) frames.shift()();
   mounted = false;
   stage.scrollLeft = stage.scrollTop = 0;
@@ -74,6 +78,7 @@ function reset() {
 function mount(active = boardState()) {
   mounted = true;
   wbSet({ activeBoard: active });
+  manager.begin(active.pageId).settleBoard(true);
 }
 
 test('早到 HMR 快照不能创建视口存档，初次装板仍走无存档恢复分支', () => {
@@ -90,6 +95,7 @@ test('早到快照保留已有非零与缩放存档；store 和真实画布 DOM 
   const saved = { scrollLeft: 2100, scrollTop: 2600, canvasZoom: '1.5' };
   savePrefs({ pageViewports: { 'e2e-anchor': saved } });
   storageWrites = 0;
+  manager.begin('e2e-anchor').settleBoard(true);
   const pending = [
     { active: null, dom: false },
     { active: boardState(), dom: false },
@@ -99,6 +105,16 @@ test('早到快照保留已有非零与缩放存档；store 和真实画布 DOM 
   for (const { active, dom } of pending) {
     mounted = dom;
     wbSet({ activeBoard: active });
+    boot.snapshotPageViewport('e2e-anchor');
+    assert.deepEqual(pageViewport('e2e-anchor'), saved);
+  }
+  assert.equal(storageWrites, 0);
+  mounted = true;
+  wbSet({ activeBoard: boardState() });
+  for (const state of ['pending', 'cancelled', 'other-page']) {
+    const session = manager.begin(state === 'other-page' ? state : 'e2e-anchor');
+    if (state !== 'pending') session.settleBoard(true);
+    if (state === 'cancelled') session.cancel();
     boot.snapshotPageViewport('e2e-anchor');
     assert.deepEqual(pageViewport('e2e-anchor'), saved);
   }

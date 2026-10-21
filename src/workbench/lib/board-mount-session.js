@@ -5,6 +5,8 @@ function toDisposer(value, root) {
 }
 
 export class BoardMountSession {
+  #boardResult = null;
+
   constructor(generation, pageId) {
     this.generation = generation;
     this.pageId = pageId;
@@ -29,8 +31,15 @@ export class BoardMountSession {
     return this.active && (!root || root.isConnected !== false);
   }
 
+  // 同步消费者读同一次 boardSettled 落定；取消后的旧会话不再可供存档。
+  get boardReady() {
+    return this.active && this.#boardResult === true;
+  }
+
   settleBoard(ok) {
-    this._settleBoard(!!ok);
+    if (this.#boardResult !== null) return;
+    this.#boardResult = !!ok;
+    this._settleBoard(this.#boardResult);
   }
 
   settlePreviews(ok) {
