@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { E2E_SITES_DIR } from './env.js';
+import { E2E_DATA_DIR, E2E_SITES_DIR } from './env.js';
 
 import { expect, test } from './lib/fixtures.js';
 
@@ -59,9 +59,35 @@ const DEFAULT_ORDER = [
   'example', 'e2e-ios', 'e2e-dir', 'e2e-dir-ios', 'e2e-mixed', 'e2e-doc',
 ];
 
-// 期望顺序直接用产品的比较器算（sortPages），不再在用例里重写一遍 ——
-// 比较器与格式化档位的纯逻辑在 page-sort.test.js / page-times.test.js。
+// 两条有时间，其余保持未知并稳定跟在后面；预期不调用被测的 sortPages。
+const ANNOTATED_ORDER = [
+  'e2e-dir', 'e2e-dir-ios', 'example', 'e2e-ios', 'e2e-mixed', 'e2e-doc',
+];
+const SORT_TIMES = [
+  ['e2e-dir', '2026-02-01T00:00:00.000Z'],
+  ['e2e-dir-ios', '2026-01-01T00:00:00.000Z'],
+];
+const sortTimeFile = (id) => path.join(E2E_DATA_DIR, id, 'sort-times.json');
+
+function clearAnnotatedTimes() {
+  for (const [id] of SORT_TIMES) fs.rmSync(sortTimeFile(id), { force: true });
+}
+
+async function seedAnnotatedTimes(request) {
+  clearAnnotatedTimes();
+  for (const [id, updated_at] of SORT_TIMES) {
+    const saved = await request.post('/save', { data: {
+      entry: id, page: 'sort-times', path: '/', baseRevision: 0, updated_at, annotations: [],
+    } });
+    expect(saved.ok(), await saved.text()).toBe(true);
+  }
+}
+test.afterEach(clearAnnotatedTimes);
+
+// updated 的期望沿用产品比较器（纯逻辑由 page-sort.test.js / page-times.test.js 守）；
+// annotated 改用上面的固定序列，避免预言机与被测接线共享同一个错误。
 test('Pages 排序：时间渲染、菜单形态、依据接线与持久化', async ({ page, request }) => {
+  await seedAnnotatedTimes(request);
   await openWorkbench(page);
 
   // 行内时间：mtime = now 的固件渲染「刚刚」；2026-01-01 的渲染「1-1」（同年
@@ -101,19 +127,25 @@ test('Pages 排序：时间渲染、菜单形态、依据接线与持久化', as
   const expectedOrder = (sort) => sortPages(rows, sort).map((row) => row.id);
 
   // 非默认依据各验一档：updated（mtime 接线，顺序必须真的变）与 annotated
-  // （pageTimes 从 /registry 到左栏的接线）。每档选完断言顺序、最近区不动，
-  // reload 一次验持久化与勾选，Esc 关菜单回焦按钮。
-  for (const [sort, label, changesOrder] of [
-    ['updated', '最后修改时间（从新到旧）', true],
-    ['annotated', '最后标注时间（从新到旧）', false],
+  // （固定 updated_at 经 /registry 到左栏，顺序必须离开 updated，不靠前序残留）。
+  // 每档选完断言顺序、最近区不动，reload 一次验持久化与勾选，Esc 关菜单回焦按钮。
+  let previousOrder = null;
+  for (const [sort, label] of [
+    ['updated', '最后修改时间（从新到旧）'],
+    ['annotated', '最后标注时间（从新到旧）'],
   ]) {
     await button.click();
     await menu.getByRole('menuitemradio', { name: label, exact: true }).click();
     await expect(menu).toHaveCount(0);
     await expect(button).toHaveAttribute('data-page-sort', sort);
     const order = await pageOrder(page);
-    expect(order).toEqual(expectedOrder(sort));
-    if (changesOrder) expect(order).not.toEqual(DEFAULT_ORDER);
+    if (sort === 'annotated') {
+      expect(order).toEqual(ANNOTATED_ORDER);
+      expect(order).not.toEqual(previousOrder);
+    } else {
+      expect(order).toEqual(expectedOrder(sort));
+      expect(order).not.toEqual(DEFAULT_ORDER);
+    }
     expect(await readRecent()).toEqual(recent);
 
     await page.reload();
@@ -123,6 +155,7 @@ test('Pages 排序：时间渲染、菜单形态、依据接线与持久化', as
     await page.keyboard.press('Escape');
     await expect(menu).toHaveCount(0);
     await expect(button).toBeFocused();
+    previousOrder = order;
   }
 
   // 收尾：恢复固件原 mtime（B 组报告：压旧的值不许漏给同组后面的 spec 用例）。
