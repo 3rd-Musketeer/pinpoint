@@ -13,6 +13,7 @@
 //   （ES module 缓存，见 BACKLOG「sidecar 模块改动后画板自动刷新」）。
 //   帧 import 的 .json / .ts / .tsx / .mjs / .cjs 同样盯（它们会进 build.json
 //   的 deps，不盯就改了零事件），类型清单与排除项见 recompile-plan 的 isWatchedSource。
+import fs from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
@@ -67,6 +68,39 @@ export default function previewHmr(options = {}) {
       .map((entry) => ({ id: entry.id, dir: path.join(path.resolve(entry.path), PROJECT_CONTENT_DIR) }));
   }
 
+  // 登记根的等价拼写表（owner 第四轮条件缺口：登记 /var/...，watcher 可交付 realpath
+  // 形态 /private/var/...——macOS 上 /var 是 /private/var 的 symlink）。归属、过滤与
+  // 编译全按登记拼写做字符串前缀比较，所以事件入口先把等价拼写归一化回登记拼写，
+  // planPageRecompile 的页相对认领才能命中单屏、不退成整页重编。
+  // realpath 只在 syncWatcher 时按登记根数量各解析一次（根不存在就只留登记拼写）；
+  // 事件路径的改写是纯字符串比较，无逐事件 fs I/O。删除事件的叶子已不存在，
+  // 能归一化靠的就是这里登记时记下的根前缀。与 site/src/lib/loaders.js watchAll
+  // 的 expand 同一思路，那边只认可两种前缀，这边还要改写回登记拼写。
+  let aliasPrefixes = [];
+
+  function rebuildAliasPrefixes() {
+    const roots = [...registryTargets().map((entry) => entry.path), ...projectDirs().map((project) => project.dir)];
+    const pairs = [];
+    for (const root of roots) {
+      const raw = path.resolve(root);
+      let real;
+      try { real = fs.realpathSync(raw); } catch { continue; }
+      if (real !== raw && !pairs.some((pair) => pair.real === real)) pairs.push({ real, raw });
+    }
+    // 最长 real 在前：嵌套登记根的归属方向与 ownerFor 一致。
+    pairs.sort((a, b) => b.real.length - a.real.length);
+    aliasPrefixes = pairs;
+  }
+
+  // 事件路径 → 登记拼写；不落在任何等价前缀下原样返回。
+  function normalizeEventPath(file) {
+    for (const { real, raw } of aliasPrefixes) {
+      if (file === real) return raw;
+      if (file.startsWith(real + path.sep)) return raw + file.slice(real.length);
+    }
+    return file;
+  }
+
   // pp3：工作台左栏的「文章」组读 /api/projects。project 里看得见的那一层（标题、
   // 文章增删与标题、摘要、画布节数、布局错误）变了才发 projects:update；只改正文、
   // 帧内容这类不改列表的变更不发。digest 按 project id 缓存，syncWatcher 时补齐。
@@ -102,6 +136,7 @@ export default function previewHmr(options = {}) {
 
   function syncWatcher() {
     seedProjectDigests();
+    rebuildAliasPrefixes();
     if (!watcher) return;
     const paths = [...registryTargets().map((entry) => entry.path), ...projectDirs().map((project) => project.dir)];
     for (const target of paths) {
@@ -241,6 +276,7 @@ export default function previewHmr(options = {}) {
   // 不搬过来——新建文件没有待刷新的编译产物）；删除只刷 project 列表 digest，不重编
   // 不通知页（删除的编译语义不在此重设计）。
   function onProjectFileAddOrRemove(server, file, removed) {
+    file = normalizeEventPath(file);
     const inProject = projectDirs().some((project) => file.startsWith(project.dir + path.sep));
     if (inProject) notifyProjectChange(server, file);
     if (removed || !isWatchedSource(file, { distRoot: distRoot || defaultDistRoot() })) return Promise.resolve([]);
@@ -303,6 +339,7 @@ export default function previewHmr(options = {}) {
     /** 测试口：同 watcher 的 add / unlink。 */
     onProjectFileAddOrRemove,
     handleHotUpdate({ file, server }) {
+      file = normalizeEventPath(file);
       const rel = file.replace(/\\/g, '/');
       if (/\/previews\/_index\.json$/.test(rel)) {
         server.ws.send({ type: 'full-reload' });

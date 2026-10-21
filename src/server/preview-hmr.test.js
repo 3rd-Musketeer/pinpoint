@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 import previewHmr from './preview-hmr.js';
+import { loadRegistry } from './lib/registry.js';
 import { fakeServer } from './test-harness.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -339,4 +340,92 @@ test('首事件等一小拍收同伴：收集窗走完、收口之前才到的�
   assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'collect-page', screens: ['a', 'b'] } }]);
   assert.equal(fs.readFileSync(path.join(distRoot, 'collect-page', 'a.html'), 'utf8'), '<div class="ios-app">a2</div>\n');
   assert.equal(fs.readFileSync(path.join(distRoot, 'collect-page', 'b.html'), 'utf8'), '<div class="ios-app">b2</div>\n');
+});
+
+// 登记根与事件路径的等价拼写（owner 第四轮现场：登记 /var/...，watcher 可交付
+// realpath 形态 /private/var/...；macOS 上 /var 是 /private/var 的 symlink）。
+// 归属只按登记拼写做字符串前缀比较时，同一实体的事件落不进归属/过滤/编译。
+// fixture 用显式 symlink 造同一实体的两种拼写，不依赖平台自身的 alias。
+function aliasPair(t, prefix) {
+  const real = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
+  t.after(() => fs.rmSync(real, { recursive: true, force: true }));
+  const alias = path.join(os.tmpdir(), `${prefix}link-${path.basename(real)}`);
+  fs.symlinkSync(real, alias);
+  t.after(() => fs.rmSync(alias, { force: true }));
+  return { real, alias };
+}
+
+test('registry dir 的等价路径事件（realpath 拼写）照常归属：change/add 都单屏重编（owner 第四轮条件缺口）', async (t) => {
+  const { real, alias } = aliasPair(t, 'pp-hmr-eq-');
+  const board = { sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }] }] };
+  fs.writeFileSync(path.join(real, 'board.json'), JSON.stringify(board));
+  fs.writeFileSync(path.join(real, 'a.html'), '<div class="ios-app">a1</div>\n');
+  fs.writeFileSync(path.join(real, 'b.html'), '<div class="ios-app">b1</div>\n');
+  const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-dist-'));
+  t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
+  // 登记用 alias 拼写（owner 现场的 /var/... 角色），事件交付 realpath 拼写。
+  const hit = previewHmr({ registry: { entries: [{ id: 'alias-page', kind: 'dir', path: alias }] }, distRoot, collectMs: 0 });
+  const handlers = {};
+  const s = fakeServer();
+  s.watcher.on = (event, fn) => { handlers[event] = fn; };
+  await hit.configureServer(s);
+  assert.equal(fs.readFileSync(path.join(distRoot, 'alias-page', 'a.html'), 'utf8'), '<div class="ios-app">a1</div>\n');
+  const bBefore = fs.statSync(path.join(distRoot, 'alias-page', 'b.html')).mtimeMs;
+
+  // change 入口：归属 alias-page 且只重编 a（归一化回登记拼写，planPageRecompile 才能按屏认领）。
+  fs.writeFileSync(path.join(real, 'a.html'), '<div class="ios-app">a2</div>\n');
+  await hit.handleHotUpdate({ file: path.join(real, 'a.html'), server: s });
+  assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'alias-page', screens: ['a'] } }]);
+  assert.equal(fs.readFileSync(path.join(distRoot, 'alias-page', 'a.html'), 'utf8'), '<div class="ios-app">a2</div>\n');
+  assert.equal(fs.statSync(path.join(distRoot, 'alias-page', 'b.html')).mtimeMs, bBefore, '兄弟屏不重编');
+
+  // add 入口：同一等价形状（删除重建后重扫只交付 add）。
+  s.sent.length = 0;
+  fs.writeFileSync(path.join(real, 'a.html'), '<div class="ios-app">a3</div>\n');
+  await handlers.add(path.join(real, 'a.html'));
+  assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'alias-page', screens: ['a'] } }]);
+  assert.equal(fs.readFileSync(path.join(distRoot, 'alias-page', 'a.html'), 'utf8'), '<div class="ios-app">a3</div>\n');
+
+  // 登记拼写（raw）的常规事件不受归一化影响。
+  s.sent.length = 0;
+  fs.writeFileSync(path.join(real, 'a.html'), '<div class="ios-app">a4</div>\n');
+  await hit.handleHotUpdate({ file: path.join(alias, 'a.html'), server: s });
+  assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'alias-page', screens: ['a'] } }]);
+
+  // 共享 realpath 前缀的兄弟目录不误归属。
+  const sibling = `${real}-sibling`;
+  fs.mkdirSync(sibling, { recursive: true });
+  t.after(() => fs.rmSync(sibling, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(sibling, 'a.html'), '<div class="ios-app">旁</div>\n');
+  s.sent.length = 0;
+  assert.equal(await hit.handleHotUpdate({ file: path.join(sibling, 'a.html'), server: s }), undefined);
+  assert.deepEqual(s.sent, []);
+});
+
+test('project 文章帧的等价路径 change：归属该篇、单屏重编、发 preview:update（同一条件缺口）', async (t) => {
+  const { real, alias } = aliasPair(t, 'pp-hmr-eqp-');
+  const content = path.join(real, 'docs', 'pinpoint');
+  const article = path.join(content, 'articles', 'flow');
+  fs.mkdirSync(article, { recursive: true });
+  fs.writeFileSync(path.join(content, 'project.json'), JSON.stringify({ id: 'demo', title: 'Demo' }));
+  fs.writeFileSync(path.join(article, 'index.mdx'), '---\ntitle: 流程\n---\n\n<Section id="s" title="节">\n\n<Canvas frames={["a", "b"]} />\n\n</Section>\n');
+  fs.writeFileSync(path.join(article, 'a.jsx'), 'export default function A() {\n  return <div className="ios-app">甲1</div>;\n}\n');
+  fs.writeFileSync(path.join(article, 'b.jsx'), 'export default function B() {\n  return <div className="ios-app">乙1</div>;\n}\n');
+  // 登记 alias 拼写；loadRegistry 出 projects，projectDirs/findProject 才生效。
+  const registryPath = path.join(real, 'registry.json');
+  fs.writeFileSync(registryPath, JSON.stringify({ version: 1, entries: [{ id: 'demo', kind: 'project', path: alias }] }));
+  const registry = loadRegistry({ path: registryPath, root: real, log: () => {} });
+  const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-dist-'));
+  t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
+  const hit = previewHmr({ registry, distRoot, collectMs: 0 });
+  const s = fakeServer();
+  await hit.configureServer(s);
+  assert.match(fs.readFileSync(path.join(distRoot, 'demo_flow', 'a.html'), 'utf8'), /甲1/);
+  const bBefore = fs.statSync(path.join(distRoot, 'demo_flow', 'b.html')).mtimeMs;
+
+  fs.writeFileSync(path.join(article, 'a.jsx'), 'export default function A() {\n  return <div className="ios-app">甲2</div>;\n}\n');
+  await hit.handleHotUpdate({ file: path.join(article, 'a.jsx'), server: s });
+  assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'demo_flow', screens: ['a'] } }]);
+  assert.match(fs.readFileSync(path.join(distRoot, 'demo_flow', 'a.html'), 'utf8'), /甲2/);
+  assert.equal(fs.statSync(path.join(distRoot, 'demo_flow', 'b.html')).mtimeMs, bBefore, '兄弟帧不重编');
 });
