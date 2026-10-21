@@ -2763,9 +2763,11 @@ test('画布钉子常显高对比，评论卡 hover 钉子才出；列表和悬�
     const n1 = await page.evaluate(() => window.pinpoint.marks.at(-2).n);
 
     const badges = page.locator('#ann-marks .ann-badge');
+    const cards = page.locator('#ann-bubbles .ann-bubble');
     const bubble1 = page.locator(`#ann-bubbles .ann-bubble[data-n="${n1}"]`);
 
     await expect(badges).toHaveCount(2);
+    await expect(cards).toHaveCount(0);
 
     // 钉子：22px accent 实心圆 + 白字 + 白描边（高对比，常显不打折）
     const pin = await badges.nth(0).evaluate((el) => {
@@ -2782,18 +2784,22 @@ test('画布钉子常显高对比，评论卡 hover 钉子才出；列表和悬�
     await expect(badges).toHaveCount(2);
     await page.locator('#wbann-toggle').click();
 
-    // 评论卡：默认不显示，hover 钉子 120ms 后出现在钉子右侧，移开收起
-    await expect(bubble1).toHaveCount(1);
-    await expect(bubble1).not.toHaveClass(/ann-bubble--show/);
+    // 评论卡：默认不建。hover 钉子 120ms 后只出这一张，正文是这条标注，
+    // 卡在钉子右侧；指针移到卡上继续留着，移开收起后一张不剩。
     await badges.nth(0).hover();
+    await expect(cards).toHaveCount(1);
     await expect(bubble1).toHaveClass(/ann-bubble--show/);
+    await expect(bubble1).toContainText('pin contrast mark');
     expect(await page.evaluate(() => {
       const b = document.querySelector('#ann-bubbles .ann-bubble').getBoundingClientRect();
       const p = document.querySelector('#ann-marks .ann-badge').getBoundingClientRect();
-      return b.left >= p.left;                            // 卡在钉子右侧（够宽时不翻面）
+      return b.left >= p.left && b.width > 0 && b.height > 0; // 卡在钉子右侧（够宽时不翻面）
     })).toBe(true);
+    await bubble1.hover();
+    await expect(cards).toHaveCount(1);
+    await expect(bubble1).toHaveClass(/ann-bubble--show/);
     await page.locator('#wbstrip-title').hover();
-    await expect(bubble1).not.toHaveClass(/ann-bubble--show/);
+    await expect(cards).toHaveCount(0);
 
     await page.evaluate(() => window.pinpoint.clear());
     await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);

@@ -38,15 +38,13 @@ function shownBubbleN() {
   return ctx.bubbleShowN != null ? ctx.bubbleShowN : ctx.bubbleFocusN;
 }
 
-// 画布实例只建当前这一张卡：无 hover / 定位时不建。行从本次可见标注里按 n 取，
-// 所以 SSE 换掉 marks 数组之后读到的是新对象，不另留一份卡缓存。
-function canvasBubbleMark(pageMarks) {
+// 画布上当前这一张的行：从已挂上的钉子取。renderLedgerChange 换账本时已把
+// entry.m 换成最新对象，这里不再为建一张卡扫一遍全部标注。
+function canvasBubbleMark() {
   var n = shownBubbleN();
-  if (n == null) return null;
-  for (var i = 0; i < pageMarks.length; i++) {
-    if (String(pageMarks[i].n) === String(n) && !isMarkBroken(pageMarks[i])) return pageMarks[i];
-  }
-  return null;
+  var entry = n != null && ctx.markNodes[n];
+  if (!entry || !drawableMark(entry.m) || isMarkBroken(entry.m)) return null;
+  return entry.m;
 }
 
 function mountBubble(m) {
@@ -80,7 +78,8 @@ export function syncBubbleStructure(pageMarks) {
   if (!ctx.renderComments) { clearBubbles(); return; }
   var keep = Object.create(null);
   if (canvasStage()) {
-    var shown = canvasBubbleMark(pageMarks);
+    // 不读 pageMarks：调用方已经为钉子扫过一遍，建卡只取当前这一条。
+    var shown = canvasBubbleMark();
     if (shown) {
       keep[shown.n] = true;
       var current = ctx.bubbleNodes[shown.n];

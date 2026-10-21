@@ -59,10 +59,13 @@ function removeMarkNode(entry) {
 }
 
 /* 评论卡的显示源（2026-09-04 评审板 H）：hover 钉子（120ms 延迟，扫过不闪）
-   或该条刚被定位。离开钉子给 90ms 宽限，指针可以移到卡上继续读。 */
+   或该条刚被定位。离开钉子给 90ms 宽限，指针可以移到卡上继续读。
+   画布只常驻当前这一张：显隐一变就建或拆，再定位。注入页与文档 iframe
+   没有画布舞台，卡在 syncBubbleStructure 里按未损坏标注逐条建。 */
 
-function syncBubbleClass() {
+export function syncBubbleVisibility() {
   var on = ctx.bubbleShowN != null ? ctx.bubbleShowN : ctx.bubbleFocusN;
+  if (canvasStage()) syncBubbleStructure();
   Object.keys(ctx.bubbleNodes).forEach(function (n) {
     ctx.bubbleNodes[n].node.classList.toggle('ann-bubble--show', String(on) === String(n));
   });
@@ -71,13 +74,6 @@ function syncBubbleClass() {
       if (part.badge) part.badge.classList.toggle('ann-badge--on', String(on) === String(n));
     });
   });
-}
-
-export function syncBubbleVisibility() {
-  // 画布只常驻当前这一张：显隐一变就按现有 marks 建或拆，再定位。
-  // 注入页与文档 iframe 没有画布舞台，仍是每条未损坏标注一张卡，这里只改 class。
-  if (canvasStage()) syncBubbleStructure(visiblePageMarks());
-  syncBubbleClass();
   if (canvasStage()) updateCanvasBubble();
 }
 
