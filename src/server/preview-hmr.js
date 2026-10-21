@@ -74,21 +74,24 @@ export default function previewHmr(options = {}) {
   // 外层 alias 改写抢走）；只有原拼写归不到任何登记根时，才按当前登记根数量
   // 有界地各 realpath 一次，命中等价根就改写回该根的登记拼写——下游归属/过滤/
   // 编译与 planPageRecompile 的页相对认领全部沿用原口径，照常命中单屏。
-  // 无长期平行表：realpath 在事件时现算，登记时还不存在的 project 内容目录
-  // 随后创建也能归；删除事件的叶子不存在，同样从登记根推导，不 realpath 叶子。
+  // 等价命中也守 ownerFor 的归属契约：dir 前缀命中取最长 real（嵌套双 alias 时
+  // inner 不被 outer 抢），file 条目只认精确命中。无长期平行表：realpath 在
+  // 事件时现算，登记时还不存在的 project 内容目录随后创建也能归；删除事件的
+  // 叶子不存在，同样从登记根推导，不 realpath 叶子。
   function resolveEventPath(file) {
     const targets = registryTargets();
     const roots = [...targets.map((entry) => entry.path), ...projectDirs().map((project) => project.dir)];
     if (targets.some((entry) => entry.kind === 'file' && file === entry.path)) return file;
     if (roots.some((root) => file.startsWith(root + path.sep))) return file;
+    let best = null;
     for (const root of roots) {
       let real;
       try { real = fs.realpathSync(root); } catch { continue; }
       if (real === root) continue;
-      if (file === real) return root;
-      if (file.startsWith(real + path.sep)) return root + file.slice(real.length);
+      const hit = file === real || file.startsWith(real + path.sep);
+      if (hit && (!best || real.length > best.real.length)) best = { real, root };
     }
-    return file;
+    return best ? best.root + file.slice(best.real.length) : file;
   }
 
   // pp3：工作台左栏的「文章」组读 /api/projects。project 里看得见的那一层（标题、

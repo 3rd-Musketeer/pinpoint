@@ -491,3 +491,61 @@ test('project 内容目录登记时不存在、随后创建：等价拼写的 ad
   );
   assert.match(fs.readFileSync(path.join(distRoot, 'late_flow', 'a.html'), 'utf8'), /迟1/);
 });
+test('嵌套双独立 alias：fallback 选最长等价根，inner dir 与 file 都不被 outer 抢（review 反例③）', async (t) => {
+  const outer = aliasPair(t, 'pp-hmr-n3o-');
+  // 真嵌套：inner 的实体在 outer 实体之下，inner 自己再经独立 symlink 登记。
+  const innerReal = path.join(outer.real, 'sub');
+  fs.mkdirSync(innerReal, { recursive: true });
+  const innerAlias = path.join(os.tmpdir(), `pp-hmr-n3i-${path.basename(outer.real)}`);
+  fs.symlinkSync(innerReal, innerAlias);
+  t.after(() => fs.rmSync(innerAlias, { force: true }));
+  fs.writeFileSync(path.join(outer.real, 'board.json'), JSON.stringify({
+    sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'x', title: 'X' }] }],
+  }));
+  fs.writeFileSync(path.join(outer.real, 'x.html'), '<div class="ios-app">x1</div>\n');
+  fs.writeFileSync(path.join(innerReal, 'board.json'), JSON.stringify({
+    sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'y', title: 'Y' }] }],
+  }));
+  fs.writeFileSync(path.join(innerReal, 'y.html'), '<div class="ios-app">y1</div>\n');
+  const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-dist-'));
+  t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
+  // 登记顺序 outer 在前：fallback 首中即返回会把事件改写到 outer.alias 错归 outer。
+  const entries = [
+    { id: 'n3-outer', kind: 'dir', path: outer.alias },
+    { id: 'n3-inner', kind: 'dir', path: innerAlias },
+  ];
+  const hit = previewHmr({ registry: { entries }, distRoot, collectMs: 0 });
+  const s = fakeServer();
+  await hit.configureServer(s);
+  assert.equal(fs.readFileSync(path.join(distRoot, 'n3-inner', 'y.html'), 'utf8'), '<div class="ios-app">y1</div>\n');
+  const xBefore = fs.statSync(path.join(distRoot, 'n3-outer', 'x.html')).mtimeMs;
+
+  // step dir：realpath 拼写事件 raw 不命中任何登记拼写，fallback 必须选最长等价根 inner。
+  s.sent.length = 0;
+  fs.writeFileSync(path.join(innerReal, 'y.html'), '<div class="ios-app">y2</div>\n');
+  await hit.handleHotUpdate({ file: path.join(innerReal, 'y.html'), server: s });
+  assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'n3-inner', screens: ['y'] } }]);
+  assert.equal(fs.readFileSync(path.join(distRoot, 'n3-inner', 'y.html'), 'utf8'), '<div class="ios-app">y2</div>\n');
+  assert.equal(fs.statSync(path.join(distRoot, 'n3-outer', 'x.html')).mtimeMs, xBefore, 'outer 不被抢编');
+
+  // step file：inner 位置的 file 条目（独立 alias 指向同一文件，alias 带 .html 后缀），
+  // 同样必须精确命中 file 根而不是被 outer 前缀抢走。
+  const fileLeaf = path.join(innerReal, 'y.html');
+  const fileLink = path.join(os.tmpdir(), `pp-hmr-n3f-${path.basename(outer.real)}.html`);
+  fs.symlinkSync(fileLeaf, fileLink);
+  t.after(() => fs.rmSync(fileLink, { force: true }));
+  const fileHit = previewHmr({
+    registry: { entries: [
+      { id: 'n3-outer', kind: 'dir', path: outer.alias },
+      { id: 'n3-file', kind: 'file', path: fileLink },
+    ] },
+    distRoot,
+    collectMs: 0,
+  });
+  const s2 = fakeServer();
+  // 只验证归属与通知对象，不起动编译（dist 产物已在上一步建好）。
+  fs.writeFileSync(fileLeaf, '<div class="ios-app">y3</div>\n');
+  await fileHit.handleHotUpdate({ file: fileLeaf, server: s2 });
+  assert.deepEqual(s2.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'n3-file' } }]);
+  assert.equal(fs.statSync(path.join(distRoot, 'n3-outer', 'x.html')).mtimeMs, xBefore, 'outer 仍不被抢编');
+});
