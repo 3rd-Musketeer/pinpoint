@@ -1116,17 +1116,20 @@ export async function figureDistErrors(target, { distRoot = defaultDistRoot(), c
 }
 
 /**
- * 编译一帧、不落 dist，只要诊断（ppnt check）：→ { ok, diagnostics: [{ code, file, line, message }] }。
- * 帧不必在板上（被布局错误挡在画布外的帧也能编）；板读不到时按没有资源的单帧编。
+ * 编译一帧、不落 dist，诊断与产物一起给（ppnt check）：
+ * → { ok, html?, diagnostics: [{ code, file, line, message }] }。
+ * 成功时 html 是注入 assets 后的产物，给机壳契约与 sidecar 挂载点用；失败时
+ * diagnostics 带 lint / 编译错误。帧不必在板上（被布局错误挡在画布外的帧也能编）；
+ * 板读不到时按没有资源的单帧编。
  */
-export async function frameDiagnostics(target, screenId) {
+export async function compileScreenChecked(target, screenId) {
   let assets = {};
   try {
     const board = readTargetBoard(target);
     if (board.assets && typeof board.assets === 'object') assets = board.assets;
   } catch { /* 板坏：照样编这一帧，板的错误由调用方另报 */ }
   const row = await compileScreen(target, { id: screenId }, { assets });
-  if (row.ok) return { ok: true, diagnostics: [] };
+  if (row.ok) return { ok: true, html: row.html, diagnostics: [] };
   return { ok: false, diagnostics: row.diagnostics || [{ code: 'compile', file: null, line: null, message: row.error }] };
 }
 

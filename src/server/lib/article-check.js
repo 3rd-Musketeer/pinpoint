@@ -7,7 +7,8 @@
  * 诊断 = { severity: 'error' | 'warning' | 'info', code, file, line, message, article?, section?, frame?, figure? }：
  * - 布局错误：listProjects 读出的那些（code 原样，path 换成绝对路径，message 去掉“第 N 行：”前缀，行号在 line）。
  * - 帧：正文里每个 <Canvas> 字面上列的帧都编一遍（articleOutline，被布局错误挡在画布外的节也算），
- *   lint 与编译错误带帧文件和行（frameDiagnostics），不落 dist。HTML 帧不编译，查它引用的本地文件：
+ *   lint 与编译错误带帧文件和行（compileScreenChecked，一帧只编一次，产物同时给机壳
+ *   契约与 sidecar 挂载点用），不落 dist。HTML 帧不编译，查它引用的本地文件：
  *   解析到可服务范围外是错误（html_asset_outside），不在盘上是警告（html_asset_missing），带引用所在的文件和行。
  * - 图：正文里每个源文件在的 <Figure> 也编一遍（compileFigure，同帧的 lint 与编译规则），诊断带图文件和行
  *   与 figure（图 id），不落 dist。图的写法错误（src、缺文件）已是布局错误；浏览器里的运行错误要打开过
@@ -31,7 +32,7 @@ import { resolveServableFile } from './servable-file.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { checkMdxRender } from './mdx-check.js';
 import { deriveArticleBoard } from './article-board.js';
-import { compileFigure, figureFiles, frameDiagnostics, renderScreenHtml } from './page-compiler.js';
+import { compileFigure, compileScreenChecked, figureFiles } from './page-compiler.js';
 import { resolveArticleTarget } from './page-resolve.js';
 import { listProjects } from './projects.js';
 import { isFile } from './fs-utils.js';
@@ -209,25 +210,18 @@ async function checkArticle({ registry, project, article, resolve, layoutErrors,
       frames += 1;
       // 画布契约只看能从产物判定的形状：帧级 shell 写了按它（comp / doc 跳过），
       // 只写了节级 shell 的跳过（分派归画布侧），两个都没写按缺省 app 校验。
-      // 编译错误另有 frameDiagnostics 诊断，不拿失败的产物说事。渲染一次，
-      // 机壳契约（B4）与 sidecar 提示（S3）共用。
+      // 一帧只编一次：lint / 编译诊断、机壳契约（B4）和 sidecar 提示（S3）共用这份
+      // 产物。编译失败不拿失败的产物说事。
+      const result = await compileScreenChecked(target, frame);
       const shells = boardScreens ? boardScreens.get(frame) : null;
-      const shellChecked = shells && !shells.src
+      const shellChecked = result.ok && shells && !shells.src
         && (shells.frameShell ? shells.frameShell !== 'comp' && shells.frameShell !== 'doc' : !shells.sectionShell);
-      let frameHtml = null;
-      if (shellChecked) {
-        const rendered = await renderScreenHtml(target, frame);
-        if (rendered.ok) {
-          frameHtml = rendered.html;
-          if (!IOS_SHELL_RE.test(frameHtml)) {
-            diagnostics.push(frameShellDiagnostic(frame, section, { address, pageDir: target.pageDir }));
-          }
-        }
+      if (shellChecked && !IOS_SHELL_RE.test(result.html)) {
+        diagnostics.push(frameShellDiagnostic(frame, section, { address, pageDir: target.pageDir }));
       }
-      const sidecarChecked = shells && !shells.src && !(shells.frameShell === 'doc' || (!shells.frameShell && shells.sectionShell === 'doc'));
-      const frameHtmlForSidecar = sidecarChecked ? frameHtml : null;
-      diagnostics.push(...sidecarMountHint(target, frame, section, { address, html: frameHtmlForSidecar }));
-      const result = await frameDiagnostics(target, frame);
+      const sidecarChecked = result.ok && shells && !shells.src
+        && !(shells.frameShell === 'doc' || (!shells.frameShell && shells.sectionShell === 'doc'));
+      diagnostics.push(...sidecarMountHint(target, frame, section, { address, html: sidecarChecked ? result.html : null }));
       for (const row of result.diagnostics) {
         const key = `${row.code}|${row.file}|${row.line}|${row.message}`;
         // 几帧共用的组件只报一次。
