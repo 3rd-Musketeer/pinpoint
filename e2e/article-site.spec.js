@@ -75,7 +75,9 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
     expect(scripts.length).toBeGreaterThan(0);
     // 文章页自己：文章 HTML、Astro 内部资源、标注客户端与它的接口（卡片的未处理数也读 /annotations）、
     // 静态卡片的加载（E1：卡片不建 iframe，浏览器端在文章页里 fetch 帧页挂 shadow root ——
-    // /api/frame、帧 CSS（?direct 是 sheetText 的签名，不带它的 CSS 照样算 unexpected）、
+    // /api/frame、帧 CSS（?direct 是 sheetText 的签名，不带它的 CSS 照样算 unexpected；外壳表
+    // /api/frame-shell.css 的地址由 frame-doc 把内容摘要写进 query，卡片再追加 &direct，
+    // 形状固定为 ?v=<16 位 hex>&direct，只放行这个精确形状）、
     // ios-kit；这些以前发生在帧 iframe 文档里，所以旧断言见不到）。
     // 卡片 iframe（doc 帧、回退帧）：只有本篇画布页的帧，annotate=off；帧页里的资源（kit、article.css）只要求都成功。
     // 此外不该有同源请求，也不该有失败。
@@ -83,6 +85,7 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
       || /^\/prose(\.[0-9a-f]+)?\.js$/.test(r.path) || r.path.startsWith('/annotations') || r.path === '/events'
       || (r.path === '/api/frame' && r.type === 'fetch')
       || (r.search === '?direct' && /\.css$/.test(r.path) && r.type === 'fetch')
+      || (r.path === '/api/frame-shell.css' && r.type === 'fetch' && /^\?v=[0-9a-f]{16}&direct$/.test(r.search))
       || r.path === '/kits/ios/ios-kit.js'));
     expect(unexpected).toEqual([]);
     // A6 收紧：文章页主框跑的是正文评论入口 —— 必须请求了 /prose.*.js，且一份
