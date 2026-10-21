@@ -6,7 +6,6 @@ import {
   boardTabList,
   flattenTabs,
   hasRawTabs,
-  isMultiTab,
   resolveTabId,
   tabIdOfScreen,
   tabIdOfSection,
@@ -46,14 +45,6 @@ test('flattenTabs: 幂等；存量 board（只有 sections）原样返回同一�
   assert.equal(flattenTabs(legacy), legacy);
   assert.equal(flattenTabs(null), null);
   assert.deepEqual(boardTabList(legacy), []);
-  assert.equal(isMultiTab(legacy), false);
-});
-
-test('isMultiTab: 一个 tab 不算多 tab（位置号不带前缀；分享页不出切换条）', () => {
-  const one = { tabs: [{ id: 'only', sections: [sec('a', ['x'])] }] };
-  assert.equal(boardTabList(one).length, 1);
-  assert.equal(isMultiTab(one), false);
-  assert.equal(isMultiTab(TABBED), true);
 });
 
 test('resolveTabId / boardForTab: 非法或缺省落第一个 tab，视图只留活动 tab 的 section', () => {

@@ -18,12 +18,6 @@ export function boardTabList(board) {
     : [];
 }
 
-/** 有 ≥ 2 个 tab 才算多 tab 页：位置号带 tab 前缀，分享页才出切换条。
- *  工作台的 #wbtabbar 出不出看 boardShowsTabBar（board-entries.js）：≥ 2 个 tab 才出；不到 2 个 tab 的画布页大纲钮在横条里（boardHasStripOutline）。 */
-export function isMultiTab(board) {
-  return boardTabList(board).length >= 2;
-}
-
 /** 想要的 tab id 不存在 / 缺省 → 第一个 tab；没有 tabs → ''。 */
 export function resolveTabId(board, wanted) {
   var tabs = boardTabList(board);
