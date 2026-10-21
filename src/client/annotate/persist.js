@@ -131,6 +131,9 @@ export function requestSync() {
   ctx.inflightVersion = sentVersion;
   var sentEpoch = ctx.syncEpoch; // 路由切换后本响应作废（数据属于旧 pathname 的账本）
   var body = saveBody(ctx.revision);
+  // saveBody 只浅拷贝数组；行与嵌套目标会被就地编辑。合并 ack 时只把发送后的
+  // 新改动接回去，必须保留实际发送那一版，不能再拿上一次盘上版本作底。
+  var sentMarks = JSON.parse(JSON.stringify(body.annotations));
   ctx.inflightSaveId = body.saveId;
   var sent = postSave(body);
   ctx.inflightSync = sent.catch(function () { return null; });
@@ -139,12 +142,21 @@ export function requestSync() {
       if (sentEpoch !== ctx.syncEpoch) return; // 陈旧响应：不得碰 syncing 或新账本状态
       ctx.syncing = false;
       if (res.ok) {
-        if (res.data && Number.isFinite(Number(res.data.revision))) {
-          ctx.revision = Number(res.data.revision);
-          if (Array.isArray(res.data.annotations)) setBase(res.data.annotations);
+        if (res.data && Number.isFinite(Number(res.data.revision)) && Number(res.data.revision) >= ctx.revision) {
+          if (Array.isArray(res.data.annotations)) {
+            if (ctx.mutationVersion > sentVersion) {
+              setBase(sentMarks);
+              rebaseOnto(res.data);
+            } else {
+              // 无在途新编辑：服务端归一的 status、回复等就是当前权威版本。
+              applyRemoteDoc(res.data);
+            }
+          } else {
+            ctx.revision = Number(res.data.revision);
+          }
+          adoptServerNumbers(res.data);
         }
         ctx.syncedMutationVersion = Math.max(ctx.syncedMutationVersion, sentVersion);
-        adoptServerNumbers(res.data);
         var shouldRetry = settleDeferredRemote(sentVersion);
         ctx.syncError = false;
         setStatus('已同步');
