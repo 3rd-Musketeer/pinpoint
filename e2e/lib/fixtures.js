@@ -1,4 +1,5 @@
 import { expect, test as base } from '@playwright/test';
+import { launchWithScrollbars } from './scrollbars.js';
 
 export { expect };
 
@@ -40,6 +41,15 @@ export function multiReactMessage(samples, evidence = duplicateReactEvidence(sam
  * 收集页面报错和脚本版本；失败时补充诊断，通过时只记 annotation。
  */
 export const test = base.extend({
+  /** 原生滚动条用例在同一 worker 共享进程；每条用例仍自己创建独立的 context/page。 */
+  scrollbarsBrowser: [async ({}, use) => {
+    const browser = await launchWithScrollbars();
+    try {
+      await use(browser);
+    } finally {
+      await browser.close();
+    }
+  }, { scope: 'worker' }],
   context: async ({ context }, use, testInfo) => {
     const samples = [];
     const scripts = new Map();

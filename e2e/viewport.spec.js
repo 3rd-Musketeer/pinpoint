@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { chromium } from '@playwright/test';
 import { expect, test } from './lib/fixtures.js';
 
 import { E2E_BASE_URL, E2E_DATA_DIR } from './env.js';
@@ -382,9 +381,8 @@ test('手机视口标注：父实例停在交互态、A 键驱动文档实例，
 // 手机屏里的 iframe 文档根有一条 15px 的常显竖条（经典滚动条），手机上没有；贴视口右边的块上的钉子
 // 默认落在框的右上角外侧（框外扩 4px 再出去半个钉子），被 #ann-overlay 的 overflow 裁掉一截。
 // 两件事无关：没有滚动条时钉子照样被裁（视口边换了个位置而已）。
-// Playwright 默认带 --hide-scrollbars 启动 Chromium（滚动条一律 0 宽），这条单独起一个不带它的浏览器。
-test('手机视口：文档根没有滚动条但照样能滚，内容自己的横滑条还在；贴右边的钉子整枚落在视口内（窗口视口同样）', async () => {
-  const browser = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });
+// Playwright 默认带 --hide-scrollbars 启动 Chromium（滚动条一律 0 宽），这条用 worker 共享的不带它的浏览器。
+test('手机视口：文档根没有滚动条但照样能滚，内容自己的横滑条还在；贴右边的钉子整枚落在视口内（窗口视口同样）', async ({ scrollbarsBrowser: browser }) => {
   const page = await browser.newPage({ baseURL: E2E_BASE_URL, viewport: { width: 1280, height: 900 } });
   const doc = page.frameLocator(DOC_FRAME);
   const measure = () => doc.locator('html').evaluate(() => {
@@ -446,6 +444,6 @@ test('手机视口：文档根没有滚动条但照样能滚，内容自己的�
     });
     await closeSettled(page);
   } finally {
-    await browser.close();
+    await page.context().close();
   }
 });

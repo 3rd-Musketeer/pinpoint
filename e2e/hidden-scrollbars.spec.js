@@ -2,13 +2,12 @@ import { expect, test } from './lib/fixtures.js';
 
 import { E2E_BASE_URL } from './env.js';
 import { openWorkbenchWithPages } from './lib/workbench.js';
-import { expectHiddenScrollbar, launchWithScrollbars, scrollbarState } from './lib/scrollbars.js';
+import { expectHiddenScrollbar, scrollbarState } from './lib/scrollbars.js';
 
 // 隐藏式滚动条（docs/design.md“滚动条”，owner 2026-10-15）：工作台的滚动容器平时不画滚动条、不占宽，
 // 指针停上去才浮出 6px 条。文章站点（评论栏、正文宽表）的同一套断言在 article-site.spec.js。
 
-test('工作台：左栏平时没有滚动条也不占宽，悬停浮出 6px 条、仍可滚；画布悬停不出条', async () => {
-  const browser = await launchWithScrollbars();
+test('工作台：左栏平时没有滚动条也不占宽，悬停浮出 6px 条、仍可滚；画布悬停不出条', async ({ scrollbarsBrowser: browser }) => {
   const page = await browser.newPage({ baseURL: E2E_BASE_URL, viewport: { width: 1280, height: 720 } });
   const shots = process.env.E2E_SHOTS_DIR;
   try {
@@ -38,6 +37,6 @@ test('工作台：左栏平时没有滚动条也不占宽，悬停浮出 6px 条
       expect((await scrollbarState(page, '#wbstage', 'x')).hidden).toBe(true);
     });
   } finally {
-    await browser.close();
+    await page.context().close();
   }
 });

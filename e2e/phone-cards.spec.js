@@ -1,11 +1,9 @@
 import { expect, test } from './lib/fixtures.js';
 import { E2E_BASE_URL } from './env.js';
-import { launchWithScrollbars } from './lib/scrollbars.js';
 import { closeSettled } from './ledger-settle.js';
 import { openWorkbench } from './lib/workbench.js';
 
-test('全页切手机再回画布：手机卡片根滚动条不占宽，内容仍能滚；桌面卡片保留原生条', async () => {
-  const browser = await launchWithScrollbars();
+test('全页切手机再回画布：手机卡片根滚动条不占宽，内容仍能滚；桌面卡片保留原生条', async ({ scrollbarsBrowser: browser }) => {
   const page = await browser.newPage({ baseURL: E2E_BASE_URL, viewport: { width: 1440, height: 900 } });
   const selector = '[data-html-card][data-screen="long-page"] iframe';
   const root = () => page.locator(selector).evaluate(el => {
@@ -36,5 +34,5 @@ test('全页切手机再回画布：手机卡片根滚动条不占宽，内容�
       d.body.append(table);
       return table.offsetHeight - table.clientHeight;
     })).toBe(15);
-  } finally { await closeSettled(page); await browser.close(); }
+  } finally { await closeSettled(page); await page.context().close(); }
 });

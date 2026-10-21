@@ -6,7 +6,7 @@ import { E2E_BASE_URL, E2E_PORT, E2E_SITE_PORT } from './env.js';
 import { ROOT } from './lib/cli.js';
 import { cardInner } from './lib/cards.js';
 import { proseSettled } from './lib/prose.js';
-import { expectHiddenScrollbar, launchWithScrollbars, scrollbarState } from './lib/scrollbars.js';
+import { expectHiddenScrollbar, scrollbarState } from './lib/scrollbars.js';
 import { waitNoReload } from './site-settle.js';
 
 // pp3：文章站点经 pinpoint 服务同源打开（docs/design.md「服务路由（pp3 文章）」）。
@@ -24,7 +24,7 @@ const PROJECT_ROOT = path.join(ROOT, 'e2e', 'project-site');
 
 const siteState = async (request) => (await (await request.get('/health')).json()).site;
 
-test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、[[ ]] popup、画布卡片、wiki 词条页、llms.txt', async ({ page, request }) => {
+test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、[[ ]] popup、画布卡片、wiki 词条页、llms.txt', async ({ page, request, scrollbarsBrowser }) => {
   // 冷启动 Astro（依赖预构建 + content layer 同步）在高负载机器上要几十秒。
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -251,8 +251,7 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
   await test.step('滚动条是隐藏式（docs/design.md“滚动条”）：正文宽表、评论栏平时不画也不占宽，指针停上去浮出 6px 条，仍可滚；宽表首列仍钉在左边', async () => {
     // 固件 takeover 有两张表：六列长格的宽表（1440 下宽过正文栏）和两列短格的窄表。
     // 原生条占的高 = offsetHeight − clientHeight；不带 --hide-scrollbars 的浏览器里才量得出（e2e/lib/scrollbars.js）。
-    const browser = await launchWithScrollbars();
-    const page = await browser.newPage({ baseURL: E2E_BASE_URL, viewport: { width: 1440, height: 900 } });
+    const page = await scrollbarsBrowser.newPage({ baseURL: E2E_BASE_URL, viewport: { width: 1440, height: 900 } });
     const shots = process.env.E2E_SHOTS_DIR;
     try {
     await page.goto('/e2e-project/takeover/');
@@ -309,7 +308,7 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
     // 文档根：原生条也不占宽（视口宽 = 文档宽）。
     expect(await page.evaluate(() => window.innerWidth - document.documentElement.clientWidth)).toBe(0);
     } finally {
-      await browser.close();
+      await page.context().close();
     }
   });
 

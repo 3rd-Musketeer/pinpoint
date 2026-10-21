@@ -1,5 +1,5 @@
 // 隐藏式滚动条（docs/design.md“滚动条”）的共用量法。
-// Playwright 默认带 --hide-scrollbars 启动 Chromium（原生滚动条一律 0 宽），量“原生条占不占宽”得单独起一个不带它的浏览器。
+// Playwright 默认带 --hide-scrollbars；fixtures.js 的 scrollbarsBrowser 在 worker 级共享不带它的浏览器。
 import { chromium, expect } from '@playwright/test';
 
 export const launchWithScrollbars = () => chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });
