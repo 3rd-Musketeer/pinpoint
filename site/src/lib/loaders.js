@@ -35,21 +35,19 @@ export function watchAll(ctx, source, reload) {
   // realpath 只在 track 时解析一次：事件回调保持纯字符串比较、无逐事件 fs I/O；
   // 删除事件的文件已不存在，靠的就是登记时记下的这个前缀。注册进 watcher 的仍只是原 roots。
   const expand = (roots) => {
-    const out = [];
+    const out = new Set(roots);
     for (const root of roots) {
-      if (!out.includes(root)) out.push(root);
-      let real;
-      try { real = fs.realpathSync(root); } catch { continue; } // 不存在的 target：只留 raw
-      if (!out.includes(real)) out.push(real);
+      try { out.add(fs.realpathSync(root)); } catch { /* 不存在的 target：只留 raw */ }
     }
-    return out;
+    return [...out];
   };
   const track = (next) => {
     if (!next) return false;
     const before = new Set(targets);
     const roots = [next.registryPath, ...next.projects.map((p) => p.dir)];
-    ctx.watcher.add(roots);
+    // 先换 targets 再注册：新增登记期间到达的事件按新清单判定（保持原调用顺序）。
     targets = expand(roots);
+    ctx.watcher.add(roots);
     return targets.some((t) => !before.has(t));
   };
   track(source);
