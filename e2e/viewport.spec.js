@@ -77,7 +77,7 @@ test.afterEach(async ({ page }) => {
   fs.rmSync(BUCKET, { recursive: true, force: true });
 });
 
-test('文档条目：默认窗口 1:1 铺满，切手机缩到可用高九成居中，没有画布也没有系统 chrome，切回即还原', async ({ page }) => {
+test('文档条目：窗口与手机视口几何、机壳有无、画布条目无视口控件', async ({ page }) => {
   await openDirDoc(page);
 
   // 默认窗口态（原独立用例）：横条出「窗口｜手机」两段，1:1 铺满 = iframe 与
@@ -152,6 +152,41 @@ test('文档条目：默认窗口 1:1 铺满，切手机缩到可用高九成居
   await page.setViewportSize({ width: 1280, height: 720 });
   await expect.poll(async () => Math.round((await page.locator(PHONE_SHELL).boundingBox()).height)).toBe(Math.round(shell.height));
 
+  await test.step('机壳「有」：整块机身装进可用高九成，仍无系统 chrome', async () => {
+    await page.evaluate(() => {
+      const prefs = JSON.parse(localStorage.getItem('pinpoint-wb') || '{}');
+      prefs.frame = 'bezel';
+      localStorage.setItem('pinpoint-wb', JSON.stringify(prefs));
+    });
+    await page.reload();
+    await page.waitForFunction(() => window.workbench && window.pinpoint);
+    const screen = page.locator('#wb-board-panel [data-screen="doc"]');
+    await expect(screen.locator('.ios-root')).not.toHaveClass(/screen-only/);
+    // 机身 = 屏幕 + 2 × (bezel 15 + frame 3)，与 iOS frame 同一份 ios-kit 取值；iframe 不变。
+    expect(await layoutSize(page, '#wb-board-panel [data-screen="doc"] .ios-device')).toEqual([438, 910]);
+    expect(await layoutSize(page, DOC_FRAME)).toEqual([402, 874]);
+    await expect(screen.locator('.ios-island, .ios-statusbar, .ios-home')).toHaveCount(0);
+    // 装进九成的是整块机身，屏在机身里等比缩。
+    const shell = await expectPhoneFit(page, PHONE_SHELL);
+    const frame = await page.locator(DOC_FRAME).boundingBox();
+    expect(Math.abs(frame.height / 874 - shell.height / 910)).toBeLessThan(0.01);
+    expect(frame.x).toBeGreaterThan(shell.x);
+    expect(frame.x + frame.width).toBeLessThan(shell.x + shell.width);
+
+    // 设置里切回「无」：屏当场重算（ResizeObserver 盯着屏的布局尺寸），不用重载。
+    await page.evaluate(() => {
+      document.querySelectorAll('#wb-board-panel .ios-root').forEach((r) => r.classList.add('screen-only'));
+    });
+    await expect.poll(async () => Math.round((await page.locator(DOC_FRAME).boundingBox()).height))
+      .toBe(Math.round(shell.height));
+    // 不把这条的机壳偏好带进后面的窗口与画布页断言。
+    await page.evaluate(() => {
+      const prefs = JSON.parse(localStorage.getItem('pinpoint-wb') || '{}');
+      prefs.frame = 'screen';
+      localStorage.setItem('pinpoint-wb', JSON.stringify(prefs));
+    });
+  });
+
   // 切回窗口：1:1 铺满，手机屏退场。
   await setViewport(page, 'window');
   // 新一代板已完成，切回也必须即时恢复文档形态。
@@ -173,37 +208,6 @@ test('文档条目：默认窗口 1:1 铺满，切手机缩到可用高九成居
   await page.locator('.wb-page[data-vpage="e2e-dir-ios"]').click();
   await expect(page.locator('#wb-board-panel [data-screen="cards"] .ios-stage')).toBeVisible();
   await expect(page.locator('#wbviewport')).toHaveCount(0);
-});
-
-test('机壳「有」时手机屏带 iPhone 机身（仍无状态栏 / 岛 / home 条），整块机身装进可用高九成', async ({ page }) => {
-  await openDirDoc(page);
-  await setViewport(page, 'phone');
-  await page.evaluate(() => {
-    const prefs = JSON.parse(localStorage.getItem('pinpoint-wb') || '{}');
-    prefs.frame = 'bezel';
-    localStorage.setItem('pinpoint-wb', JSON.stringify(prefs));
-  });
-  await page.reload();
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-  const screen = page.locator('#wb-board-panel [data-screen="doc"]');
-  await expect(screen.locator('.ios-root')).not.toHaveClass(/screen-only/);
-  // 机身 = 屏幕 + 2 × (bezel 15 + frame 3)，与 iOS frame 同一份 ios-kit 取值；iframe 不变。
-  expect(await layoutSize(page, '#wb-board-panel [data-screen="doc"] .ios-device')).toEqual([438, 910]);
-  expect(await layoutSize(page, DOC_FRAME)).toEqual([402, 874]);
-  await expect(screen.locator('.ios-island, .ios-statusbar, .ios-home')).toHaveCount(0);
-  // 装进九成的是整块机身，屏在机身里等比缩。
-  const shell = await expectPhoneFit(page, PHONE_SHELL);
-  const frame = await page.locator(DOC_FRAME).boundingBox();
-  expect(Math.abs(frame.height / 874 - shell.height / 910)).toBeLessThan(0.01);
-  expect(frame.x).toBeGreaterThan(shell.x);
-  expect(frame.x + frame.width).toBeLessThan(shell.x + shell.width);
-
-  // 设置里切回「无」：屏当场重算（ResizeObserver 盯着屏的布局尺寸），不用重载。
-  await page.evaluate(() => {
-    document.querySelectorAll('#wb-board-panel .ios-root').forEach((r) => r.classList.add('screen-only'));
-  });
-  await expect.poll(async () => Math.round((await page.locator(DOC_FRAME).boundingBox()).height))
-    .toBe(Math.round(shell.height));
 });
 
 test('视口偏好按页记在 prefs.viewportByPage 跨 reload 保持；手机视口不改文档 src', async ({ page }) => {
