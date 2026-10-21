@@ -328,7 +328,16 @@ export function closeAnnotation(n) {
   var m = ctx.marks.find(function (k) { return k.n === n; });
   var from = m ? annStatusOf(m) : null;
   if (!markStatus(n, 'close')) return;
-  showToast('已完成 #' + n, '撤销', function () { markStatus(n, from); });
+  // 撤销认稳定 id 不认 n：创建应答会把临时 n 就地认成正式号（persist.js
+  // adoptServerNumbers 按 id 改同一条的 n），闭包里的旧 n 到执行时已找不到目标。
+  // 按 id 找回当前行、沿 markStatus 恢复关闭前的原态；行没了（删除 / 换账本）
+  // 就不动任何同号行。没有 id 的旧行（未经 ensureAllMarkIds 的存量）保持原按 n 撤销。
+  var id = m && typeof m.id === 'string' ? m.id : null;
+  showToast('已完成 #' + n, '撤销', function () {
+    if (!id) { markStatus(n, from); return; }
+    var cur = ctx.marks.find(function (k) { return k.id === id; });
+    if (cur) markStatus(cur.n, from);
+  });
 }
 
 export function reopenAnnotation(n) {
