@@ -54,6 +54,10 @@ export default defineConfig({
     // .tmp/ 放一次性产物，其中 just preview 的数据快照会被服务自己写（账本、dist），
     // 监听它会让每次保存都触发整页刷新。
     // e2e 的 test-results-* / playwright-report-* 每条用例都写文件，同样不该进 watch。
-    watch: { ignored: [path.join(ROOT, '.tmp') + '/**', path.join(ROOT, 'test-results*') + '/**', path.join(ROOT, 'playwright-report*') + '/**'] },
+    watch: {
+      // macOS 使用 Node fs.watch 事件后端、不轮询；atomic 沿用原 FSEvents 后端的 false。
+      ...(process.platform === 'darwin' ? { useFsEvents: false, usePolling: false, atomic: false } : {}),
+      ignored: [path.join(ROOT, '.tmp') + '/**', path.join(ROOT, 'test-results*') + '/**', path.join(ROOT, 'playwright-report*') + '/**'],
+    },
   },
 });
