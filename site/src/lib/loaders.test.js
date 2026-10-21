@@ -175,6 +175,93 @@ test('articlesLoader：异步重读保留快照，坏 YAML 只影响本篇，修
   await reload('add', files[0]);
   assert.equal(entries.get('loader/a').data.title, '新增');
 });
+test('articlesLoader：扫描后保存只提交本次正文的元数据代次', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-loader-generation-'));
+  const previousRegistry = process.env.PINPOINT_REGISTRY;
+  t.after(() => {
+    if (previousRegistry === undefined) delete process.env.PINPOINT_REGISTRY;
+    else process.env.PINPOINT_REGISTRY = previousRegistry;
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  const file = path.join(root, 'docs/pinpoint/articles/a/index.mdx');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(path.join(root, 'docs/pinpoint/project.json'), '{"id":"loader"}');
+  fs.writeFileSync(file, '---\ntitle: A\nsummary: old-summary\ndate: 2026-10-21\n---\n正文 A');
+  fs.utimesSync(file, new Date('2020-01-01'), new Date('2020-01-01'));
+  const oldMtime = fs.statSync(file).mtimeMs;
+  const registry = path.join(root, 'registry.json');
+  fs.writeFileSync(registry, JSON.stringify({ version: 1, entries: [{ id: 'loader', kind: 'project', path: root }] }));
+  process.env.PINPOINT_REGISTRY = registry;
+  let parser;
+  await mdx().hooks['astro:config:setup']({ config: {}, updateConfig() {}, addPageExtension() {}, addContentEntryType(type) { parser = type; }, addRenderer() {} });
+  const mutable = new MutableDataStore();
+  const store = mutable.scopedStore('articles');
+  const originalRead = fs.promises.readFile;
+  let gates = 0;
+  let savedMtime;
+  fs.promises.readFile = async function (...args) {
+    if (args[0] === file && gates === 0) {
+      gates++;
+      fs.writeFileSync(file, '---\ntitle: 修复后的 A\nsummary: new-summary\ndate: 2026-10-22\n---\n恢复的正文');
+      savedMtime = fs.statSync(file).mtimeMs;
+    }
+    return Reflect.apply(originalRead, this, args);
+  };
+  try {
+    await articlesLoader().load({
+      config: { root: pathToFileURL(root + '/') }, entryTypes: new Map([['.mdx', parser]]), store,
+      parseData: async ({ data }) => data, generateDigest: (text) => text,
+      logger: { error: (message) => assert.fail(message), warn: (message) => assert.fail(message) },
+    });
+  } finally {
+    fs.promises.readFile = originalRead;
+    await mutable.waitUntilSaveComplete();
+  }
+  assert.equal(gates, 1);
+  assert.notEqual(savedMtime, oldMtime);
+  const entry = store.get('loader/a');
+  assert.deepEqual({ title: entry.data.title, summary: entry.data.summary, date: entry.data.date, body: entry.body, mtimeMs: entry.data.mtimeMs }, {
+    title: '修复后的 A', summary: 'new-summary', date: '2026-10-22', body: '恢复的正文', mtimeMs: savedMtime,
+  });
+});
+
+test('articlesLoader：缺省字段与无效日期保持共享解释，不采用 Astro YAML 日期', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-loader-metadata-'));
+  const previousRegistry = process.env.PINPOINT_REGISTRY;
+  t.after(() => {
+    if (previousRegistry === undefined) delete process.env.PINPOINT_REGISTRY;
+    else process.env.PINPOINT_REGISTRY = previousRegistry;
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  const dir = path.join(root, 'docs/pinpoint');
+  for (const [id, text] of Object.entries({ plain: '默认正文', invalid: '---\ntitle: ""\nsummary: ""\ndate: 2026-02-30\n---\n无效日期正文' })) {
+    const file = path.join(dir, 'articles', id, 'index.mdx');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+  }
+  fs.writeFileSync(path.join(dir, 'project.json'), '{"id":"metadata"}');
+  const registry = path.join(root, 'registry.json');
+  fs.writeFileSync(registry, JSON.stringify({ version: 1, entries: [{ id: 'metadata', kind: 'project', path: root }] }));
+  process.env.PINPOINT_REGISTRY = registry;
+  let parser;
+  await mdx().hooks['astro:config:setup']({ config: {}, updateConfig() {}, addPageExtension() {}, addContentEntryType(type) { parser = type; }, addRenderer() {} });
+  const mutable = new MutableDataStore();
+  const store = mutable.scopedStore('articles');
+  try {
+    await articlesLoader().load({
+      config: { root: pathToFileURL(root + '/') }, entryTypes: new Map([['.mdx', parser]]), store,
+      parseData: async ({ data }) => data, generateDigest: (text) => text,
+      logger: { error: (message) => assert.fail(message), warn: (message) => assert.fail(message) },
+    });
+  } finally {
+    await mutable.waitUntilSaveComplete();
+  }
+  for (const id of ['plain', 'invalid']) {
+    const { data } = store.get(`metadata/${id}`);
+    assert.deepEqual({ title: data.title, summary: data.summary, date: data.date, loadError: data.loadError }, { title: id, summary: undefined, date: undefined, loadError: undefined });
+  }
+});
+
 /** 把挂着的重读从新到旧放行，直到不再有新的重读：交叠时新的先结束、旧的后结束（满载下观察到的顺序）。 */
 async function drain(runs) {
   for (let round = 0; round < 20; round++) {

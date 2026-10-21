@@ -21,7 +21,7 @@ import { listProjects } from '../../../src/server/lib/projects.js';
 import { projectErrorLine } from './site-errors.js';
 
 export { articleCanvas } from '../../../src/server/lib/article-board.js';
-export { projectIdForFile } from '../../../src/server/lib/projects.js';
+export { projectIdForFile, articleMetadata, fileMtimeMs } from '../../../src/server/lib/projects.js';
 export { articlePageId } from '../../../src/shared/project-ids.js';
 
 const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));

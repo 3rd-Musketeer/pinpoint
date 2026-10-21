@@ -38,7 +38,7 @@ export { PROJECT_CONTENT_DIR };
 /** wiki 词条的 status 只有三档（CONTEXT.md“wiki 词条”）。 */
 const CONCEPT_STATUSES = new Set(['占位', '收敛中', '已固定']);
 
-function fileMtimeMs(file) {
+export function fileMtimeMs(file) {
   try {
     return fs.statSync(file).mtimeMs;
   } catch {
@@ -109,6 +109,16 @@ export function readProjectJson(root) {
   return { json, file, errors };
 }
 
+/** listProjects 与站点 loader 共用的文章元数据规则；始终解释调用方这次读到的文字。 */
+export function articleMetadata(text, id) {
+  const fm = parseFrontmatter(text);
+  const data = { title: fm.data.title || id };
+  if (fm.data.summary) data.summary = fm.data.summary;
+  // 日期保持共享解释的字符串；无效日期按没写处理，供首页回退到 mtime。
+  if (parseArticleDate(fm.data.date) != null) data.date = fm.data.date.trim();
+  return { data, errors: fm.errors };
+}
+
 function readArticles(dir, errors, projectId, sources = {}) {
   const articlesDir = path.join(dir, 'articles');
   const articles = [];
@@ -143,7 +153,7 @@ function readArticles(dir, errors, projectId, sources = {}) {
       continue;
     }
     const indexPath = `${rel}/index.mdx`;
-    const fm = parseFrontmatter(text);
+    const fm = articleMetadata(text, item.name);
     for (const message of fm.errors) errors.push(problem('frontmatter', message, { path: indexPath }));
     // 画布写法的错误（跨页引用、缺帧文件、一节两个 Canvas、重复节 id…）也是布局错误，原样带上节、帧、行。
     const canvas = parseArticleCanvas(text, frameFileReaders(articleDir, { projectRoot: path.resolve(dir, '..', '..'), sources }));
@@ -151,12 +161,8 @@ function readArticles(dir, errors, projectId, sources = {}) {
     // canvasSections：画布上有几节（带 Canvas 且列了帧的节）。0 = 这篇没有画布，
     // 工作台左栏点它直接打开正文（docs/projects.md“工作台左栏”）。
     const canvasSections = canvas.sections.filter((section) => section.frames.length > 0).length;
-    const article = { id: item.name, title: fm.data.title || item.name, dir: articleDir, file, canvasSections };
+    const article = { id: item.name, ...fm.data, dir: articleDir, file, canvasSections };
     if (projectId && ENTRY_ID_PATTERN.test(projectId)) article.pageId = articlePageId(projectId, item.name);
-    if (fm.data.summary) article.summary = fm.data.summary;
-    // 首页按最近修改时间排（src/shared/article-feed.js）：合法的 date 优先，否则用 index.mdx 的修改时间。
-    // 写错的 date 不报错，按没写处理。
-    if (parseArticleDate(fm.data.date) != null) article.date = fm.data.date.trim();
     article.mtimeMs = fileMtimeMs(file);
     articles.push(article);
   }

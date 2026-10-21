@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { serialize } from 'node:v8';
-import { loadProjects } from './projects-source.js';
+import { loadProjects, articleMetadata, fileMtimeMs } from './projects-source.js';
 import { namespaceErrors } from '../../../src/shared/refs.js';
 import { projectErrorLine } from './site-errors.js';
 
@@ -132,12 +132,13 @@ export function articlesLoader() {
             const contents = await fs.promises.readFile(a.file, 'utf8').catch(() => null);
             if (contents === null) { ctx.logger.warn(`cannot read ${a.file}`); continue; }
             const id = `${p.id}/${a.id}`;
-            const own = { title: a.title, summary: a.summary, date: a.date, mtimeMs: a.mtimeMs, project: p.id, article: a.id, file: a.file };
+            const { title, summary, date } = articleMetadata(contents, a.id).data;
+            const own = { title, summary, date, mtimeMs: fileMtimeMs(a.file), project: p.id, article: a.id, file: a.file };
             try {
               const { body, data } = await mdx.getEntryInfo({ contents, fileUrl: pathToFileURL(a.file) });
               const parsed = await ctx.parseData({
                 id,
-                // title / summary come from listProjects (one frontmatter parser for site, service and CLI; docs/projects.md).
+                // 与 listProjects 共用解释，但元数据与 body 来自本次 contents，不能沿用扫描时的 a。
                 // date / mtimeMs 给首页排序（src/shared/article-feed.js）。
                 data: { ...data, ...own },
                 filePath: a.file,
