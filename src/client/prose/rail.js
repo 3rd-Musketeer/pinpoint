@@ -167,10 +167,11 @@ export function createRail(opts) {
   }
 
   /** 引文在规范化文本里的 start 换成正文里那段的顶部。已关闭的线程不画 mark，
-   *  但 state.anchors 里还有 start/end，用这个当锚点，不把它当成缺失。 */
-  function quoteTop(start, railTop) {
-    if (!Number.isFinite(start)) return null;
-    var index = buildTextIndex(root);
+   *  但 state.anchors 里还有 start/end，用这个当锚点，不把它当成缺失。
+   *  index 由这一次 placeCards 按需建好传进来：同一次排版里的多条关闭评论共用
+   *  这一份，函数返回后就丢掉，下一次排版再按当时的 DOM 重建。 */
+  function quoteTop(start, railTop, index) {
+    if (!Number.isFinite(start) || !index) return null;
     var segments = offsetsToSegments(start, start + 1, index);
     if (!segments.length) return null;
     var seg = segments[0];
@@ -184,8 +185,9 @@ export function createRail(opts) {
 
   /** 这张卡的锚点相对右栏内容顶部的高度。正文评论取第一个 mark.pp-hl 的顶部；
       没画高亮但引文还能定位的（已关闭、收着的）用引文位置。画布标注取所属画布卡片的顶部。
-      引文失效、卡片不在，返回 null。 */
-  function anchorTop(card, railTop) {
+      引文失效、卡片不在，返回 null。textIndex 是这一次 placeCards 的懒索引槽：
+      只有走到关闭评论的引文回退才建，草稿和画布卡不建。 */
+  function anchorTop(card, railTop, textIndex) {
     var id = card.getAttribute('data-id');
     if (id === '__draft') {
       var draftMark = root.querySelector('mark.pp-hl.draft');
@@ -202,7 +204,10 @@ export function createRail(opts) {
       if (ids.indexOf(id) >= 0) return marks[i].getBoundingClientRect().top - railTop;
     }
     var hit = state.anchors && state.anchors.get(id);
-    if (hit && Number.isFinite(hit.start)) return quoteTop(hit.start, railTop);
+    if (hit && Number.isFinite(hit.start)) {
+      if (!textIndex.index) textIndex.index = buildTextIndex(root);
+      return quoteTop(hit.start, railTop, textIndex.index);
+    }
     return null;
   }
 
@@ -222,9 +227,12 @@ export function createRail(opts) {
     rail.classList.add('pp-rail-aligned');
     // 锚点相对卡片容器，不相对整栏：栏顶的“评论”标题不占卡片的 top。
     var railTop = list.getBoundingClientRect().top;
+    // 索引只活在这一次排版里。高亮拆装发生在 placeCards 之前（renderRail 写完
+    // innerHTML 再排），这里读到的是当前 DOM；不挂到 state 上，下一帧重排再按需建。
+    var textIndex = { index: null };
     var items = [];
     for (var i = 0; i < cards.length; i++) {
-      items.push({ id: cards[i].getAttribute('data-id'), anchor: anchorTop(cards[i], railTop), height: cards[i].offsetHeight });
+      items.push({ id: cards[i].getAttribute('data-id'), anchor: anchorTop(cards[i], railTop, textIndex), height: cards[i].offsetHeight });
     }
     // 选中的卡片上面挤不下时，可以越过栏顶一直排到文档顶部：它自己必须留在锚点旁边。
     var docTop = -(railTop + window.scrollY);
