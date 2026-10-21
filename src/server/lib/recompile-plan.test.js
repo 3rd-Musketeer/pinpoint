@@ -405,3 +405,48 @@ test('过滤前健康门：旧/坏账目、失败、缺输入或产物、新文�
   fs.utimesSync(path.join(pageDir, 'b.html'), new Date(0), new Date(0));
   assert.deepEqual(plan(), { all: true, drift: 'b.html' });
 });
+
+test('R1 普通相对 import 候选切换：重复帧 change 不能吞掉 NEW_TS', async () => {
+  // 精确复用 reviewer A candidate.mjs 的 OLD_JS → 新增优先 label.ts、只投 a.jsx change。
+  const pageDir = path.join(tmp, 'candidate'); const distRoot = path.join(tmp, 'dist');
+  fs.mkdirSync(pageDir);
+  const write = (file, text) => fs.writeFileSync(path.join(pageDir, file), text);
+  write('board.json', JSON.stringify({ sections: [{ id: 's', screens: [{ id: 'a' }] }] }));
+  write('a.jsx', "import { text } from './label';\nexport default function F(){return <div>{text}</div>}\n");
+  write('label.js', 'export const text = "OLD_JS";');
+  const target = { kind: 'dir', entryId: 'review-a', pageDir, urlBase: '/sites/review-a/' };
+  assert.equal((await compilePage(target, { distRoot })).ok, true);
+  const frame = path.join(pageDir, 'a.jsx');
+  const htmlFile = path.join(distRoot, target.entryId, 'a.html');
+  assert.match(fs.readFileSync(htmlFile, 'utf8'), /OLD_JS/);
+  write('label.ts', 'export const text: string = "NEW_TS";');
+  const legacyPlan = planPageRecompile(target, [frame], { distRoot });
+  assert.deepEqual(legacyPlan, { all: false, screens: ['a'] });
+  const plan = planPageRecompile(target, [frame], { distRoot, eventKinds: new Map([[frame, 'change']]) });
+  assert.notEqual(plan.noop, true, '默认解析身份未证明稳定，必须保留重编');
+  assert.equal((await compilePage(target, { distRoot, ...(plan.all ? {} : { onlyScreens: plan.screens }) })).ok, true);
+  assert.match(fs.readFileSync(htmlFile, 'utf8'), /NEW_TS/, '真实产物必须消费新的 label.ts');
+  assert.doesNotMatch(fs.readFileSync(htmlFile, 'utf8'), /OLD_JS/);
+
+  // 显式 Chip.jsx 内部仍可能有未知默认解析；必须核对整个实际 import 图。
+  fs.rmSync(path.join(pageDir, 'label.ts'));
+  fs.mkdirSync(path.join(pageDir, 'components'));
+  write('a.jsx', "import { Chip } from './components/Chip.jsx';\nexport default function F(){return <Chip />}\n");
+  write('components/Chip.jsx', "import { text } from '../label';\nexport function Chip(){return <span>{text}</span>}\n");
+  assert.equal((await compilePage(target, { distRoot })).ok, true);
+  assert.match(fs.readFileSync(htmlFile, 'utf8'), /OLD_JS/);
+  write('label.ts', 'export const text: string = "NEW_TS";');
+  const transitive = planPageRecompile(target, [frame], { distRoot, eventKinds: new Map([[frame, 'change']]) });
+  assert.notEqual(transitive.noop, true, '传递依赖的未知解析也不能认证');
+  assert.equal((await compilePage(target, { distRoot, ...(transitive.all ? {} : { onlyScreens: transitive.screens }) })).ok, true);
+  assert.match(fs.readFileSync(htmlFile, 'utf8'), /NEW_TS/);
+
+  // 明确扩展且实际读入精确文件时仍可认证；强制重编核对 esbuild 确实继续选择 JS。
+  write('a.jsx', "import { text } from './label.js';\nexport default function F(){return <div>{text}</div>}\n");
+  assert.equal((await compilePage(target, { distRoot })).ok, true);
+  assert.equal(planPageRecompile(target, [frame], { distRoot, eventKinds: new Map([[frame, 'change']]) }).noop, true);
+  const exact = await compilePage(target, { writeDist: false, includeFrames: true });
+  assert.equal(exact.ok, true);
+  assert.match(exact.frames.a.html, /OLD_JS/);
+  assert.doesNotMatch(exact.frames.a.html, /NEW_TS/);
+});

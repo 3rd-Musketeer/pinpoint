@@ -400,6 +400,26 @@ function depRecordsFromInputs(target, metaInputs, exclude, inputs = null) {
   return out;
 }
 
+/** 只认证有解析证据的 import；默认 resolver 的扩展探测/目录/包解析继续保守。 */
+function importsStable(target, metaInputs, resolutions) {
+  const base = fs.realpathSync(target.pageDir);
+  return Object.entries(metaInputs).every(([importer, input]) => Array.isArray(input.imports) && input.imports.every((item) => {
+    if (item.external) return Object.hasOwn(REQUIRE_MAP, item.path);
+    if (typeof item.original !== 'string' || typeof item.path !== 'string') return false;
+    const selected = path.resolve(base, item.path);
+    if (item.original === 'pinpoint/kit') return selected === KIT_JSX_INDEX;
+    if (item.original === 'pinpoint/figure') return selected === FIGURE_HELPER;
+    if (!/^\.\.?\//.test(item.original)) return false;
+    const requested = path.resolve(path.dirname(path.resolve(base, importer)), item.original);
+    // metafile 证明实际读入的是显式扩展文件；身份/存在性仍由原输入门核对。
+    if (/\.(?:jsx?|tsx?|[mc][jt]s|json|css)$/.test(item.original) && requested === selected) return true;
+    // 既有文章组件插件确实记过该 import 的候选及选择，不能借别的 import 的记录兜底。
+    return resolutions.some(({ candidates, selected: picked }) => picked && candidates?.length
+      && path.resolve(base, candidates[0]) === requested
+      && (path.resolve(target.pageDir, picked) === selected || path.resolve(base, picked) === selected));
+  }));
+}
+
 async function compileJsxScreen(target, screenId, file) {
   const inputs = new Map();
   const resolutions = [];
@@ -456,7 +476,7 @@ async function compileJsxScreen(target, screenId, file) {
     return {
       ok: true,
       html: renderFrameHtml(h(__ppWrapComponent(mod.default), {}), target.pageDir),
-      input: inputs.get(path.resolve(fs.realpathSync(target.pageDir), file))?.record,
+      input: { ...inputs.get(path.resolve(fs.realpathSync(target.pageDir), file))?.record, importsStable: importsStable(target, built.metafile.inputs, resolutions) },
       deps: depRecordsFromInputs(target, built.metafile.inputs, [file], inputs),
       resolutions,
     };
@@ -475,7 +495,7 @@ function compileHtmlScreen(target, screenId, file) {
     const mtimeMs = fs.statSync(source).mtimeMs;
     const bytes = fs.readFileSync(source);
     html = bytes.toString('utf8');
-    input = { mtimeMs, realpath: fs.realpathSync(source), sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
+    input = { mtimeMs, realpath: fs.realpathSync(source), sha256: crypto.createHash('sha256').update(bytes).digest('hex'), importsStable: true };
   } catch (error) {
     return { ok: false, error: `${file}: ${String((error && error.message) || error)}` };
   }
@@ -668,7 +688,7 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
     const deps = depRecordsFromInputs(target, built.metafile.inputs, ['__comp__.jsx', sourceRel], inputs);
     return {
       result: { ok: true, html },
-      source: { file: sourceRel, ...((inputs.get(path.resolve(sourceAbs)) || inputs.get(path.resolve(fs.realpathSync(target.pageDir), sourceRel)))?.record || { mtimeMs: sourceMtime }), resolutions, ...(deps.length ? { deps } : {}) },
+      source: { file: sourceRel, ...((inputs.get(path.resolve(sourceAbs)) || inputs.get(path.resolve(fs.realpathSync(target.pageDir), sourceRel)))?.record || { mtimeMs: sourceMtime }), importsStable: importsStable(target, built.metafile.inputs, resolutions), resolutions, ...(deps.length ? { deps } : {}) },
     };
   } catch (error) {
     return failed({ ok: false, error: `${sourceDesc}: ${String((error && error.message) || error)}` });

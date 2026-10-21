@@ -202,6 +202,7 @@ export function planPageRecompile(target, changedFiles, { distRoot = defaultDist
       for (const entry of screenEntriesFromBoard(board)) {
         const source = build.sources[entry.id];
         add(source);
+        if (source.importsStable !== true) throw new Error('import 解析身份未证明稳定');
         if (!Array.isArray(source.deps ?? [])) throw new Error('损坏依赖');
         for (const dep of source.deps || []) add(dep);
         if (!fs.statSync(path.join(distRoot, target.entryId, `${entry.id}.html`)).isFile()) throw new Error('缺产物');
