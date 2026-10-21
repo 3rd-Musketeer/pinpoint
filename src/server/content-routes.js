@@ -24,7 +24,7 @@ import path from 'node:path';
 
 import { annotateInjection } from './lib/annotate-snippet.js';
 import { annotateClientSrc, injectAnnotateSrc } from './lib/annotate-bundle.js';
-import { contentEtag, sendCacheable } from './lib/http-respond.js';
+import { contentEtag, sendCacheable, sendJson } from './lib/http-respond.js';
 import { FRAME_BOOT_PATH, FRAME_SHELL_CSS_PATH, frameBootSource, frameShellCss } from './lib/frame-doc.js';
 import { parseReqUrl } from './lib/req-url.js';
 import { resolveContainedFile, resolveContainedPath } from './lib/servable-file.js';
@@ -132,7 +132,28 @@ export default function contentRoutes() {
             return;
           }
           const css = urlPath === FRAME_SHELL_CSS_PATH;
-          const body = Buffer.from(css ? frameShellCss() : frameBootSource(), 'utf8');
+          // 读盘与生成是同步的。这条 middleware 是 async，Connect 不接返回的 Promise，
+          // 异常必须在这里结束成应答，不能变成未处理的 rejection。
+          let body;
+          try {
+            body = Buffer.from(css ? frameShellCss() : frameBootSource(), 'utf8');
+          } catch (error) {
+            const payload = {
+              error: 'frame_failed',
+              message: String((error && error.message) || error),
+            };
+            if (req.method === 'HEAD') {
+              const buffer = Buffer.from(JSON.stringify(payload), 'utf8');
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.setHeader('Content-Length', String(buffer.length));
+              res.setHeader('Cache-Control', 'no-store');
+              res.end();
+              return;
+            }
+            sendJson(res, 500, payload, { cacheControl: 'no-store' });
+            return;
+          }
           sendCacheable(req, res, body, {
             policy: { cacheControl: 'no-cache' },
             contentType: css ? 'text/css; charset=utf-8' : 'application/javascript; charset=utf-8',

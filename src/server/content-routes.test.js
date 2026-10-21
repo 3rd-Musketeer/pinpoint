@@ -175,7 +175,7 @@ test('kit path only answers GET/HEAD; write methods are a loud 405', async () =>
 
 test('frame shell css and frame-boot answer the raw source, with HEAD and 304', async () => {
   const handler = kitMiddleware();
-  const css = await callKit(handler, 'GET', '/api/frame-shell.css');
+  const css = await callKit(handler, 'GET', '/api/frame-shell.css?v=ignored');
   assert.equal(css.next, false);
   assert.equal(css.res.statusCode, 200);
   assert.match(css.res.headers['Content-Type'], /^text\/css/);
@@ -183,7 +183,7 @@ test('frame shell css and frame-boot answer the raw source, with HEAD and 304', 
   assert.match(css.res.headers.ETag, /^"[0-9a-f]{16}"$/);
   assert.match(css.res.text, /html,body\{margin:0/);
   assert.ok(!css.res.text.includes('/@vite/client'));
-  const boot = await callKit(handler, 'GET', '/api/frame-boot.js');
+  const boot = await callKit(handler, 'GET', '/api/frame-boot.js?v=0123456789abcdef');
   assert.equal(boot.res.statusCode, 200);
   assert.match(boot.res.headers['Content-Type'], /^application\/javascript/);
   assert.match(boot.res.text, /\/api\/frame 嵌入页的预览脚本运行时/);
@@ -200,6 +200,41 @@ test('frame shell css and frame-boot answer the raw source, with HEAD and 304', 
   assert.equal(post.res.headers.Allow, 'GET, HEAD');
   const missing = await callKit(handler, 'GET', '/api/frame-boot/nope.js');
   assert.equal(missing.next, true, '外壳只有这两个精确路径，其余继续交给后面的路由');
+});
+
+test('外壳源读失败结束成 500 no-store，HEAD 无体，下一请求仍按正常资源应答', async () => {
+  const handler = kitMiddleware();
+  const readFileSync = fs.readFileSync;
+  const indexPath = path.join(ROOT, 'index.html');
+  fs.readFileSync = function (file, ...args) {
+    if (String(file) === indexPath) {
+      const error = new Error('probe: index.html unavailable');
+      error.code = 'ENOENT';
+      throw error;
+    }
+    return readFileSync.call(this, file, ...args);
+  };
+  try {
+    const failed = await callKit(handler, 'GET', '/api/frame-shell.css');
+    assert.equal(failed.next, false);
+    assert.equal(failed.res.statusCode, 500);
+    assert.equal(failed.res.headers['Cache-Control'], 'no-store');
+    assert.equal(JSON.parse(failed.res.text).error, 'frame_failed');
+    const head = await callKit(handler, 'HEAD', '/api/frame-shell.css');
+    assert.equal(head.res.statusCode, 500);
+    assert.equal(head.res.chunks.length, 0);
+    assert.equal(head.res.headers['Cache-Control'], 'no-store');
+    assert.match(head.res.headers['Content-Type'], /^application\/json/);
+  } finally {
+    fs.readFileSync = readFileSync;
+  }
+  const again = await callKit(handler, 'GET', '/api/frame-shell.css');
+  assert.equal(again.res.statusCode, 200);
+  assert.equal(again.res.headers['Cache-Control'], 'no-cache');
+  assert.match(again.res.text, /html,body\{margin:0/);
+  const cached = await callKit(handler, 'GET', '/api/frame-shell.css', { 'if-none-match': again.res.headers.ETag });
+  assert.equal(cached.res.statusCode, 304);
+  assert.equal(cached.res.chunks.length, 0);
 });
 
 test('缺失文件的真 404 带 no-cache（review 建议 3：URL 之后可能补回来，不许存「不存在」）', async () => {

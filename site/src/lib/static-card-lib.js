@@ -6,9 +6,17 @@
 
 /** 服务端写进帧文档的 frame-boot（content-routes 的 /api/frame-boot.js，原文不经 vite 转换）。
  *  只认这个根相对地址：别的 origin、协议相对地址即使路径相同也不是它。
+ *  内容摘要是 ?v=<16 hex>，pathname 不变。
  *  内联形态的标记留着：旧文档或测试夹具里仍可能是整段脚本。 */
 export const FRAME_BOOT_PATH = '/api/frame-boot.js';
 export const FRAME_BOOT_MARKER = '/api/frame 嵌入页的预览脚本运行时';
+
+/** 根相对同源的外壳地址：pathname 精确，query 只能是空或一档内容摘要。 */
+export function isFrameBootSrc(src) {
+  if (src === FRAME_BOOT_PATH) return true;
+  if (!src.startsWith(`${FRAME_BOOT_PATH}?`)) return false;
+  return /^v=[0-9a-f]{16}$/.test(src.slice(FRAME_BOOT_PATH.length + 1));
+}
 
 /**
  * 帧文档里一个 <script> 的身份：
@@ -20,7 +28,7 @@ export function classifyFrameScript({ src = '', attrs = '', text = '' }) {
   if (/\bdata-preview-(?:script|mount)\b/.test(attrs)) return 'preview';
   if (src) {
     // 属性原文就是服务端生成的根相对路径。先比整串，避免同名路径的外部 URL 被当成 boot。
-    if (src === FRAME_BOOT_PATH) return 'boot';
+    if (isFrameBootSrc(src)) return 'boot';
     try {
       if (new URL(src, 'http://x/').pathname === '/kits/ios/ios-kit.js') return 'boot';
     } catch { /* 非法地址按 other */ }

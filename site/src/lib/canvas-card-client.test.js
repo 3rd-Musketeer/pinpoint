@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { refreshBadges, sheetText, waitForFrameBoot } from './canvas-card-client.js';
+import * as canvasCardClient from './canvas-card-client.js';
+
+const { refreshBadges, sheetText, waitForFrameBoot } = canvasCardClient;
 import { pageKeyFromPathname } from '../../../src/shared/annotate-page-key.js';
 import { readLedgerDocument, rememberLedgerDocument } from '../../../src/client/lib/ledger-reader.js';
 
@@ -36,6 +38,17 @@ test('整批读取等待邻接账本期间收到 SSE，绘制时按每本账本�
       assert.equal(badge.hidden, false);
     });
   }
+});
+
+test('恢复补刷：外壳摘要变了走重挂；HTML 相同留 DOM', () => {
+  const recover = canvasCardClient.staticCardRecovery;
+  assert.equal(typeof recover, 'function');
+  const settled = { settled: true, text: '<link rel="stylesheet" href="/api/frame-shell.css?v=aaaaaaaaaaaaaaaa">' };
+  const next = '<link rel="stylesheet" href="/api/frame-shell.css?v=bbbbbbbbbbbbbbbb">';
+  assert.equal(recover(settled, settled.text, false), 'keep');
+  assert.equal(recover(settled, next, false), 'remount');
+  assert.equal(recover(settled, settled.text, true), 'remount');
+  assert.equal(recover({ settled: false, text: '' }, settled.text, false), 'remount');
 });
 
 test('waitForFrameBoot：标记已在立刻放行；标记不来就到点放行，不一直等', async () => {

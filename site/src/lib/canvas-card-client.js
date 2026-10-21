@@ -154,6 +154,17 @@ function rawCssStrict(url) {
  * （rawCss），从不等别的缓存项，所以不会互等。
  */
 const sheetTextCache = new Map();
+/** 恢复补刷的文本捷径：已挂上、且这次 HTML 与上次相同，才留 DOM、不清样式缓存。
+ *  外壳摘要写在链接上，摘要变了 HTML 就不同。点名强刷不走这里。 */
+export function frameHtmlUnchanged(state, text, force) {
+  return !force && !!state.settled && text === state.text;
+}
+
+/** 恢复补刷对一张静态卡的决定：HTML 未变留 DOM；变了清样式缓存并重挂。 */
+export function staticCardRecovery(state, text, force) {
+  return frameHtmlUnchanged(state, text, force) ? 'keep' : 'remount';
+}
+
 export function sheetText(url) {
   if (!sheetTextCache.has(url)) {
     const pending = rawCssStrict(url).then(
@@ -450,7 +461,7 @@ function initStaticCards() {
         state.host.contentWindow.location.reload();
       });
     } else {
-      if (!force && state.settled && text === state.text) { state.etag = res.headers.get('ETag') || ''; return; }
+      if (staticCardRecovery(state, text, force) === 'keep') { state.etag = res.headers.get('ETag') || ''; return; }
       state.invalidateCss?.();
       if (state.settled) replace(state);
       await mountCard(state.host, text, url);

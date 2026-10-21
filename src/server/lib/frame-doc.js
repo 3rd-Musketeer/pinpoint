@@ -5,7 +5,8 @@
  * 条目），然后：
  * - fragment 屏（ios app/lock、comp）→ 组装完整 HTML 文档（fragment +
  *   机壳 + ios-kit + annotate 注入）。固定外壳 CSS 与 frame-boot 是同源链接
- *   （/api/frame-shell.css、/api/frame-boot.js），离线导出仍内联原文。机壳与画布装载共享
+ *   （/api/frame-shell.css?v=<内容摘要>、/api/frame-boot.js?v=<内容摘要>），
+ *   摘要变了帧 HTML 才变，恢复补刷才能重挂。离线导出仍内联原文。机壳与画布装载共享
  *   src/shared/frame-shell.js —— 两端 stage 以下 DOM 链逐字节同构，锚点归一才成立；
  * - doc 壳屏（完整文档 / 合成板）→ 不重包装，由端点 302 到该屏
  *   自己的 URL（同文档同 pathname → 标注天然落同一个按路径分的账本）。
@@ -17,6 +18,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { contentEtag } from './http-respond.js';
 
 import {
   wrapCompStage,
@@ -245,6 +248,16 @@ export function frameBootSource() {
 export const FRAME_SHELL_CSS_PATH = '/api/frame-shell.css';
 export const FRAME_BOOT_PATH = '/api/frame-boot.js';
 
+/** 外壳内容摘要：与该资源应答的 ETag 同一段 16 hex，不带引号。 */
+export function shellStamp(body) {
+  return contentEtag(Buffer.from(body, 'utf8')).slice(1, -1);
+}
+
+/** 写进帧 HTML 的根相对外壳地址。摘要进 query，pathname 仍是共享资源。 */
+export function frameShellAssetHref(pathname, body) {
+  return `${pathname}?v=${shellStamp(body)}`;
+}
+
 // 画布 frame 的视觉 token：.wb-library 块的几何档（index.html 内联样式）+
 // wb-tokens.css :root 的色档。与 workbench/export-core.js EXPORT_TOKEN_NAMES 同名单。
 const FRAME_TOKEN_SOURCES = [
@@ -330,7 +343,7 @@ export async function framePageHtml(target, opts = {}) {
 <title>${escHtml(target.title || target.screenId)}</title>
 <link rel="stylesheet" href="/workbench/wb-tokens.css">
 <link rel="stylesheet" href="/kits/ios/ios-kit.css">
-<link rel="stylesheet" href="${FRAME_SHELL_CSS_PATH}">
+<link rel="stylesheet" href="${escHtml(frameShellAssetHref(FRAME_SHELL_CSS_PATH, frameShellCss()))}">
 </head>
 <body>
 <div class="wb-screen" data-screen="${escHtml(target.screenId)}">
@@ -338,7 +351,7 @@ ${embed ? '' : frameCaptionHtml(target)}
 ${wrapped}
 </div>
 <script src="/kits/ios/ios-kit.js"></script>
-<script src="${FRAME_BOOT_PATH}"></script>
+<script src="${escHtml(frameShellAssetHref(FRAME_BOOT_PATH, frameBootSource()))}"></script>
 ${inject}
 </body>
 </html>`;

@@ -8,13 +8,20 @@ import { fileURLToPath } from 'node:url';
 import {
   FrameDocError,
   assembleFrameContent,
+  frameBootSource,
   framePageHtml,
+  frameShellCss,
+  FRAME_BOOT_PATH,
+  FRAME_SHELL_CSS_PATH,
   markEmbedStage,
   frameTokens,
   neutralizePreviewScripts,
   resolveFrameTarget,
 } from './frame-doc.js';
 import { ensureAnnotateBundle } from './annotate-bundle.js';
+import { contentEtag } from './http-respond.js';
+
+const shellHref = (pathname, body) => `${pathname}?v=${contentEtag(Buffer.from(body, 'utf8')).slice(1, -1)}`;
 import frameApi from '../frame-api.js';
 import { mockReq, mockRes } from '../test-harness.js';
 
@@ -187,8 +194,8 @@ test('framePageHtml: self-contained document with identity injection and inert p
   assert.ok(html.includes('<base href="/sites/e2e-ios/">'));
   assert.ok(html.includes('data-annotate="off"'));
   assert.ok(html.includes('/kits/ios/ios-kit.css'));
-  assert.ok(html.includes('href="/api/frame-shell.css"'));
-  assert.ok(html.includes('src="/api/frame-boot.js"'));
+  assert.ok(html.includes(`href="${shellHref(FRAME_SHELL_CSS_PATH, frameShellCss())}"`));
+  assert.ok(html.includes(`src="${shellHref(FRAME_BOOT_PATH, frameBootSource())}"`));
   assert.ok(!html.includes('[frame-boot]'));
   assert.ok(html.includes('window.__pinpointFrame={"pageId":"e2e-ios","screenId":"recipe"'));
   assert.ok(html.includes('"section":"brew-flow"'));
@@ -212,7 +219,7 @@ test('framePageHtml: annotate=off drops the annotate client but keeps boot mecha
   // 哈希地址与老地址都不许出现。
   assert.ok(!/<script src="\/annotate/.test(html));
   assert.ok(!html.includes('__pinpointFrame'));
-  assert.ok(html.includes('src="/api/frame-boot.js"'));
+  assert.ok(html.includes(`src="${shellHref(FRAME_BOOT_PATH, frameBootSource())}"`));
   assert.ok(!html.includes('[frame-boot]'));
   assert.ok(html.includes('data-preview-mount'));
 });
@@ -238,6 +245,31 @@ test('markEmbedStage: first stage only, comp kind, attributes added without touc
   assert.equal(markEmbedStage('<div id="a" class="x ios-stage y" style="z"><div class="ios-device"></div><div class="ios-stage"></div></div>'),
     '<div id="a" class="x ios-stage y" style="z" data-pp-stage="phone"><div class="ios-device" data-pp-device></div><div class="ios-stage"></div></div>');
   assert.equal(markEmbedStage('<p class="ios-stage">no div</p>'), '<p class="ios-stage">no div</p>');
+});
+
+test('外壳 CSS 变了，同一帧 HTML 的链接摘要跟着变；复原后 HTML 与原来相同', async () => {
+  const readFileSync = fs.readFileSync;
+  const indexPath = path.join(ROOT, 'index.html');
+  let cssExtra = '';
+  fs.readFileSync = function (file, ...args) {
+    if (String(file) === indexPath && cssExtra) return readFileSync.call(this, file, ...args) + cssExtra;
+    return readFileSync.call(this, file, ...args);
+  };
+  try {
+    const target = resolveFrameTarget('e2e-ios', 'recipe', { registry });
+    const before = await framePageHtml(target, { embed: 'card' });
+    const hrefOf = (html) => html.match(/href="(\/api\/frame-shell\.css\?v=[0-9a-f]{16})"/)[1];
+    const bootOf = (html) => html.match(/src="(\/api\/frame-boot\.js\?v=[0-9a-f]{16})"/)[1];
+    cssExtra = '<style>.ios-device{opacity:.9}</style>';
+    const after = await framePageHtml(target, { embed: 'card' });
+    assert.notEqual(after, before);
+    assert.notEqual(hrefOf(after), hrefOf(before));
+    assert.equal(bootOf(after), bootOf(before));
+    cssExtra = '';
+    assert.equal(await framePageHtml(target, { embed: 'card' }), before);
+  } finally {
+    fs.readFileSync = readFileSync;
+  }
 });
 
 test('frameTokens extracts canvas geometry + color tokens from the real files', () => {
