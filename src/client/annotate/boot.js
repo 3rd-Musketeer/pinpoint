@@ -1,10 +1,9 @@
-// 启动：判定页面形态（文章页 / 嵌入帧 / 画布 / 普通页），定下账本键
-// （ENTRY、PAGE、LS_KEY）。文章页在这里转去正文评论并返回 false。
+// 启动：判定页面形态（嵌入帧 / 画布 / 普通页），定下账本键
+// （ENTRY、PAGE、LS_KEY）。文章页的正文评论不走这里，入口是 prose-boot.js。
 // 导出 bind_boot、bootAnnotate。
 import { CANVAS_LEDGER } from '../../shared/project-ids.js';
 import { annotationSlug } from '../../shared/annotation-slug.js';
 import { pageKeyFromPathname } from '../../shared/annotate-page-key.js';
-import { startProseComments } from '../prose-comments.js';
 export function bind_boot(c) { ctx = c; }
 var ctx;
 
@@ -15,17 +14,6 @@ export function bootAnnotate() {
     if (src) { try { return new URL(src).origin; } catch (e) {} }
     return '';
   })();
-  // pp3：文章页（article-proxy 注入 __pinpointProse）只跑正文评论 —— 选中文字
-  // → 右栏线程，桶 = 文章页 id、账本 @prose（src/client/prose-comments.js）。画布
-  // 标注的工具条、侧栏、元素标注都不在文章页上起：画布标注只在画布页做。
-  if (window.__pinpointProse && window.__pinpointEntry) {
-    var startProse = function () {
-      startProseComments({ server: ctx.SERVER, entry: String(window.__pinpointEntry) });
-    };
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startProse, { once: true });
-    else startProse();
-  return false;
-  }
   // Registry entry this page annotates under: the page-world global set by
   // same-origin injectors (/sites/、/api/frame）。Default: 'pinpoint'.
   // （浏览器扩展已于 pp2 切片 3 退役 —— 它曾走 <html data-pinpoint-entry>

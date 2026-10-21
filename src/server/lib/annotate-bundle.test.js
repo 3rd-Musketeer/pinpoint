@@ -132,6 +132,26 @@ test('正文评论入口比完整客户端小，文章页注入它，画布注�
   assert.equal(bundle.proseBundleByHash(prose.hash).js, prose.js);
 });
 
+test('画布包的 import 图不含正文评论入口，正文包仍含这些模块', async (t) => {
+  const { bundle } = await bundleCopyFor(t);
+  const prose = await bundle.ensureProseBundle();
+  const full = await bundle.ensureAnnotateBundle();
+  const proseEntry = [
+    'client/prose-comments.js',
+    'client/prose/text-index.js',
+    'client/prose/highlight.js',
+    'client/prose/rail.js',
+    'client/prose/sync.js',
+  ];
+  for (const fragment of proseEntry) {
+    assert.equal(full.inputs.some((p) => p.endsWith(fragment)), false, `annotate bundle includes ${fragment}`);
+    assert.equal(prose.inputs.some((p) => p.endsWith(fragment)), true, `prose bundle misses ${fragment}`);
+  }
+  assert.equal(full.inputs.some((p) => p.endsWith('client/prose-boot.js')), false);
+  assert.equal(prose.inputs.some((p) => p.endsWith('client/prose-boot.js')), true);
+  assert.ok(full.inputs.some((p) => p.endsWith('client/annotate.js')));
+});
+
 test('import 图里的库被删 → 构建显式失败，注入点回退老地址而不是静默发旧版', async (t) => {
   const { bundle, srcRoot } = await bundleCopyFor(t);
   const annStatus = path.join(srcRoot, 'shared', 'ann-status.js');
