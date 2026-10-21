@@ -4,8 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CARD_SCALE, cardModel, DOC_WIDTHS, frameSrc, looseErrors, pageLedgerUrl, pendingCount, badgeText, rowsOnFrame, shellBox } from './canvas-card.js';
-import { pageKeyFromPathname } from '../../../src/shared/annotate-page-key.js';
+import { CARD_SCALE, cardModel, DOC_WIDTHS, frameSrc, looseErrors, pendingCount, badgeText, shellBox } from './canvas-card.js';
 import { bannerErrors } from './site-errors.js';
 import { articleCanvas, articlePageId } from './projects-source.js';
 import { loadRegistry } from '../../../src/server/lib/registry.js';
@@ -166,11 +165,8 @@ test('卡片宽度和服务端的宽度表是同一组数', () => {
   assert.equal(DOC_WIDTHS.desktop.width, HTML_FRAME_WIDTHS.desktop);
 });
 
-test('HTML 帧的标注账本：账本名按页面地址（src/shared/annotate-page-key.js）；行补上那一帧；卡片模型带 docUrl', () => {
-  assert.equal(pageLedgerUrl('p_a', '/sites/p_a/long-page.html'), `/annotations/${encodeURIComponent(pageKeyFromPathname('/sites/p_a/long-page.html'))}?entry=p_a`);
-  const rows = rowsOnFrame({ annotations: [{ id: 'a' }, { id: 'b', screenId: 'kept' }] }, 'long-page');
-  assert.deepEqual(rows.map((r) => r.screenId), ['long-page', 'kept']);
-  // 补了帧之后，卡片头的数就能按帧数到它们。
+test('HTML 帧的标注账本：补上帧 id 的未关闭行计入卡片头；卡片模型带 docUrl', () => {
+  const rows = [{ id: 'a', screenId: 'long-page' }, { id: 'b', screenId: 'kept' }];
   assert.equal(pendingCount({ annotations: rows }, 'p_a', ['long-page']), 1);
   const model = cardModel({ pageId: 'p_a', sections: [{ id: 's', title: 'S', frames: [
     { id: 'long-page', shell: 'doc', url: '/sites/p_a/long-page.html' }, { id: 'phone' },

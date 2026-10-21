@@ -3,10 +3,8 @@
  * renders from it, the browser script (canvas-card-client.js) counts badges
  * with it, node --test covers it.
  */
-import { ledgerFrameRows } from '../../../src/shared/ledger-frames.js';
 import { isClosed } from '../../../src/shared/ann-status.js';
 import { canvasViewHref } from '../../../src/shared/workbench-url.js';
-import { pageKeyFromPathname } from '../../../src/shared/annotate-page-key.js';
 
 /**
  * Frame preview inside the card and the overlay: same-origin render endpoint,
@@ -15,21 +13,6 @@ import { pageKeyFromPathname } from '../../../src/shared/annotate-page-key.js';
  */
 export const frameSrc = (pageId, frameId) =>
   `/api/frame?page=${encodeURIComponent(pageId)}&screen=${encodeURIComponent(frameId)}&annotate=off&embed=card`;
-
-/**
- * An HTML frame's annotations live in their own ledger in the same bucket, named after the page's
- * pathname on the service (the annotate client in that page names it this way).
- */
-export const pageLedgerUrl = (pageId, docUrl) =>
-  `/annotations/${encodeURIComponent(pageKeyFromPathname(docUrl))}?entry=${encodeURIComponent(pageId)}`;
-
-/**
- * Rows of an HTML frame's ledger carry no screenId (the page is its own document): stamp the frame id on
- * a copy so they count and group like canvas rows. Rows that already name a frame are kept as they are.
- */
-export function rowsOnFrame(doc, frameId) {
-  return ledgerFrameRows(doc, [frameId]);
-}
 
 /**
  * Preview geometry per shell. One scale for every frame in a card, so a bare
