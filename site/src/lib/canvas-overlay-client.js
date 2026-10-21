@@ -52,6 +52,7 @@ export function initCanvasOverlay() {
   const cardOf = (id) => cards.find((c) => c.dataset.ppSection === id) || null;
 
   // state：{ section, frame, trigger, pushed, scrollX, scrollY, release }；iframe 关了也留着（再开不用重装工作台）。
+  // scrollX/Y 是 null 表示没有可信返回点（直达深链，见下面 RETURN_KEY 一段），关闭时不回写坐标。
   let state = null;
   let iframe = null;
   let navigation = 0;   // 每次打开 / 换落点加一：上一次还在等工作台的定位作废
@@ -335,12 +336,33 @@ export function initCanvasOverlay() {
   };
 
   // ---- 打开 / 关闭 ----
+  // 返回位置的来源：普通点击时页面早已加载完，当前滚动就是真实阅读位置，点击把它并进
+  // pushState 的 entry（合并外部 history.state，不覆盖）。浮层内刷新后模块在 interactive
+  // 就跑 open()，此刻浏览器还没恢复完滚动，读到的是排版途中值（2026-10-21 诊断：一轮存了
+  // 2020、补存 1948，之后浏览器才回到 1614，关闭却把途中值写回）——所以深链重开时认领
+  // entry 上这份记录。直达的分享链接 entry 上没有它：返回点由浏览器恢复，关闭不回写。
+  const RETURN_KEY = 'ppCanvasReturn';
+
+  // 认领 entry 上的返回点：须是本篇、本节、有限坐标（followSection 换节只换 hash 不换
+  // state，节失配就不认，防陈旧记录被别页/别节沿用）。
+  function savedReturn(sectionId) {
+    const r = history.state?.[RETURN_KEY];
+    if (!r || r.page !== pageId || r.section !== sectionId) return null;
+    return Number.isFinite(r.x) && Number.isFinite(r.y) ? { x: r.x, y: r.y } : null;
+  }
+
+  // 加载还在途中（直达深链）时当前滚动是瞬时值，不算返回点。
+  function liveReturn() {
+    return document.readyState === 'complete' ? { x: window.scrollX, y: window.scrollY } : null;
+  }
+
   function open(sectionId, { frame = '', ann = null, trigger = null, pushed = false } = {}) {
     if (!cardOf(sectionId)) return false;
     lastLanding = '';
     if (!state) {
       layers.dismiss('popup');
-      state = { section: sectionId, trigger, pushed, scrollX: window.scrollX, scrollY: window.scrollY };
+      const ret = savedReturn(sectionId) || liveReturn();
+      state = { section: sectionId, trigger, pushed, scrollX: ret?.x ?? null, scrollY: ret?.y ?? null };
       state.release = layers.push('overlay', () => close());
       document.documentElement.classList.add('pp-ov-lock');
       const r = trigger?.getBoundingClientRect();
@@ -396,7 +418,9 @@ export function initCanvasOverlay() {
   }
 
   // 回到打开前的滚动位置（锁滚动、dialog、后退都不该让正文挪地方）。
+  // 没有可信返回点（直达深链）时不回写：正文留在浏览器恢复落定的位置。
   function restore(s) {
+    if (s.scrollX == null || s.scrollY == null) return;
     if (window.scrollX !== s.scrollX || window.scrollY !== s.scrollY) window.scrollTo(s.scrollX, s.scrollY);
   }
 
@@ -450,7 +474,10 @@ export function initCanvasOverlay() {
     const t = targetOf(hit);
     if (!t || !cardOf(t.section)) return;
     e.preventDefault();
-    history.pushState(history.state, '', canvasHash(t.section, { frame: t.frame, ann: t.ann }));
+    // 返回点跟着被压入的 entry 走（合并外部 state）：浮层内刷新后深链重开能认领它。
+    const base = history.state && typeof history.state === 'object' ? history.state : {};
+    const ret = { page: pageId, section: t.section, x: window.scrollX, y: window.scrollY };
+    history.pushState({ ...base, [RETURN_KEY]: ret }, '', canvasHash(t.section, { frame: t.frame, ann: t.ann }));
     open(t.section, { frame: t.frame, ann: t.ann, trigger: hit, pushed: true });
   });
 

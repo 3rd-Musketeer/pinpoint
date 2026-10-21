@@ -296,6 +296,26 @@ test('画布浮层：点帧打开整张画布并选中；从文章进画布不�
     await page.setViewportSize({ width: 1440, height: 900 });
   });
 
+  await test.step('浮层里刷新：新文档按 #canvas= 深链重开，关闭回到点帧时的阅读位置', async () => {
+    await page.locator('[data-pp-canvas][data-pp-section="confirm"]').scrollIntoViewIfNeeded();
+    const at = await scrollOf(page);
+    await page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-screen="confirm-done"] .cc-hit').click();
+    await expect(overlay(page)).toHaveAttribute('open', '');
+    await canvasReady(page);
+    await page.reload();
+    await expect(page.locator('#article .prose h1')).toHaveText('提交前确认');
+    // 重载是另一份文档：旧文档上的 __sameDoc 标记不在，不能拿旧文档的基线继续断言。
+    expect(await page.evaluate(() => window.__sameDoc)).toBeUndefined();
+    await expect(overlay(page)).toHaveAttribute('open', '');
+    await canvasReady(page);
+    await overlay(page).locator('[data-ov-close]').click();
+    await expect(overlay(page)).not.toHaveAttribute('open', '');
+    await expect.poll(() => hashOf(page)).toBe('');
+    // 深链重开时文档还在 interactive，那一刻的滚动是排版途中值；返回点来自点击时
+    // 记进 history entry 的真实阅读位置，关闭后精确回到它（刷新前是什么就回到什么）。
+    await expect.poll(() => scrollOf(page)).toEqual(at);
+  });
+
   await closeSettled(page);
   expect(pageErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);
