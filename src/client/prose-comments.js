@@ -1,7 +1,7 @@
 /* 正文评论（pp3）：article 页上选中正文文字 → 浮出“评论” → 高亮 + 右栏线程。
  *
- * 只在注入方写了 window.__pinpointProse 的页面上跑（article-proxy 给文章页注入），
- * 由 annotate.js 在最前面分流过来；这时不起画布标注的工具条、侧栏与元素标注。
+ * 文章页由 article-proxy 注入独立入口 /prose.js（prose-boot.js），并写 window.__pinpointProse。
+ * 这份入口只跑正文评论，不起画布标注的工具条、侧栏与元素标注。画布与帧仍走 /annotate.js。
  * 数据走标注客户端的同一条路：桶 = window.__pinpointEntry（文章页 id
  * `<project>_<article>`），账本固定 @prose，与这篇画布的 @canvas 同桶、同一套 #n
  * 和状态机；GET /annotations 水合、POST /save 带 baseRevision、/events 同步。

@@ -1,5 +1,5 @@
 /* 文章页的正文评论入口。article-proxy 只给文章页注入这一份，不注入完整标注客户端。
- * 画布浮层里的工作台仍走 /annotate.js。分流条件和 annotate/boot.js 的文章页分支一致：
+ * 画布浮层里的工作台仍走 /annotate.js。正文评论不经 annotate.js 分流，本文件就是入口：
  * 有 __pinpointEntry 就起正文评论，不起工具条和侧栏。 */
 import { startProseComments } from './prose-comments.js';
 
