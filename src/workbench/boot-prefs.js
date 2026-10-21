@@ -199,6 +199,10 @@ export function snapshotPageViewport(pageId) {
   // 文档条目形态不存档（zoom 恒 1、stage 不滚动）—— 否则会拿 doc 形态的
   // scroll 0 / zoom 1 覆盖掉画布条目刚存下的视口。
   if (activeBoardMode() === 'html') return;
+  // 首次装板前 HMR 也会请求快照；空舞台的原点不能成为有效存档，
+  // 否则 afterMount 会误认已有视口而跳过首访聚焦。
+  var active = wbGet().activeBoard;
+  if (!active || active.pageId !== pageId || !document.querySelector('#wb-board-panel .wb-zoom-wrap')) return;
   clearTimeout(viewportSaveT);
   viewportSaveT = null;
   flushZoomSave();
