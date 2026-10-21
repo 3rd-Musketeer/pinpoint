@@ -19,7 +19,7 @@ import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
 import { PROJECT_CONTENT_DIR } from './lib/page-resolve.js';
-import { buildAllPages, compilePage, defaultDistRoot } from './lib/page-compiler.js';
+import { buildAllPages, compilePage, defaultDistRoot, settlePageCompilation, subscribePageCompilations } from './lib/page-compiler.js';
 import { resolvePageTarget } from './lib/board-source.js';
 import { articlePageId } from '../shared/project-ids.js';
 import { findProject } from './lib/projects.js';
@@ -51,6 +51,15 @@ export default function previewHmr(options = {}) {
   let watcher = null;
   const watched = new Set();
   const compiling = new Map();
+  let dispose = () => {};
+  let closed = false;
+
+  function collectCompletion(state, { screens, fullReload = false }) {
+    state.compiled = true;
+    state.fullReload ||= fullReload;
+    if (!Array.isArray(screens)) { state.full = true; state.screens.clear(); }
+    else if (!state.full) for (const id of screens) state.screens.add(id);
+  }
 
   function registryTargets() {
     if (!registry) return [];
@@ -200,6 +209,7 @@ export default function previewHmr(options = {}) {
       state.pending.clear();
       try {
         const options = distRoot ? { distRoot } : {};
+        await settlePageCompilation(target, distRoot || defaultDistRoot());
         let effective = changed;
         const plan = planPageRecompile(target, changed, { ...options, eventKinds, onChanges: files => { effective = files; } });
         // 文章画布：只改了正文、画布没变 → 不编（站点自己有 HMR）。
@@ -208,9 +218,7 @@ export default function previewHmr(options = {}) {
         if (plan.drift) console.log(`[pp2] ${target.entryId}：${plan.drift} 变了但没收到 watch 事件，整页重编`);
         if (!plan.all) options.onlyScreens = plan.screens;
         const result = await compilePage(target, options);
-        state.compiled = true;
-        if (result.partial) for (const row of result.screens) state.screens.add(row.id);
-        else { state.full = true; state.screens.clear(); }
+        collectCompletion(state, { screens: result.partial ? result.screens.map(row => row.id) : null });
         const failed = result.screens.filter((row) => !row.ok);
         if (result.error || failed.length) {
           console.error(`[pp2] 编译 ${target.entryId} 有失败屏：${result.error || failed.map((row) => `${row.id}（${row.error}）`).join('；')}`);
@@ -296,6 +304,7 @@ export default function previewHmr(options = {}) {
   }
 
   function notify(server, target, { fullReload = false, screens = null } = {}) {
+    if (closed) return;
     const data = { id: target.entryId };
     if (Array.isArray(screens)) data.screens = screens;
     broadcastPreviewUpdate(data);
@@ -310,19 +319,41 @@ export default function previewHmr(options = {}) {
 
   return {
     name: 'preview-hmr',
+    closeBundle() { dispose(); },
     async configureServer(server) {
+      dispose();
+      closed = false;
       watcher = server.watcher;
       syncWatcher();
+      const unsubscribe = subscribePageCompilations(distRoot || defaultDistRoot(), update => {
+        const owned = resolvePageTarget(update.target.entryId, { registry, root: templateRoot });
+        if (!owned || path.resolve(owned.pageDir) !== path.resolve(update.target.pageDir)) return;
+        const state = compiling.get(update.target.entryId);
+        if (state) collectCompletion(state, update);
+        else notify(server, update.target, update);
+      });
+      const onAdd = file => onProjectFileAddOrRemove(server, file, false);
+      const onUnlink = file => onProjectFileAddOrRemove(server, file, true);
+      const close = () => {
+        closed = true;
+        unsubscribe();
+        watcher?.off?.('add', onAdd);
+        watcher?.off?.('unlink', onUnlink);
+        watched.clear();
+        server.httpServer?.off?.('close', close);
+      };
+      dispose = close;
+      server.httpServer?.once?.('close', close);
       if (watcher && typeof watcher.on === 'function') {
         // 返回 Promise 只是让测试能 await 到编译收尾；chokidar 忽略返回值。
-        watcher.on('add', (file) => onProjectFileAddOrRemove(server, file, false));
-        watcher.on('unlink', (file) => onProjectFileAddOrRemove(server, file, true));
+        watcher.on('add', onAdd);
+        watcher.on('unlink', onUnlink);
       }
       // 启动编译（probe）：dist 已是最新（同一版编译器、源码与板没动过）的页整页
       // 跳过，只编改动过的页 —— 重启不再为没变的东西付全量编译。总耗时 + 每页
       // 耗时照旧打进日志。
       const started = performance.now();
-      const results = await buildAllPages({ registry, root: ROOT, templateOnly: templateOnly(), skipFresh: true, ...(distRoot ? { distRoot } : {}) });
+      const results = await buildAllPages({ registry, root: ROOT, templateOnly: templateOnly(), skipFresh: true, publish: false, ...(distRoot ? { distRoot } : {}) }).catch(error => { close(); throw error; });
       const total = Math.round(performance.now() - started);
       const skipped = results.filter((result) => result.skipped).length;
       console.log(`[pp2] 启动编译：${results.length} 页（fresh 跳过 ${skipped}），共 ${total}ms`);
@@ -355,7 +386,7 @@ export default function previewHmr(options = {}) {
       // 编译期定型，印章一改必须全量重编 → 对每页发 preview:update。分支收窄到
       // kit 目录：名字里带 jsx 的仓外条目交给下面的 registry 分支正确归属。
       if (/\/kits\/ios\/jsx\//.test(rel)) {
-        return buildAllPages({ registry, root: ROOT, templateOnly: templateOnly(), ...(distRoot ? { distRoot } : {}) }).then((results) => {
+        return buildAllPages({ registry, root: ROOT, templateOnly: templateOnly(), publish: false, ...(distRoot ? { distRoot } : {}) }).then((results) => {
           for (const result of results) {
             notify(server, { entryId: result.entryId });
           }

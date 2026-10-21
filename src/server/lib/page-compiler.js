@@ -771,6 +771,24 @@ export function compilerStamp() {
 const pageCompilations = new Map();
 const compilationKey = (target, distRoot) => path.join(path.resolve(distRoot), target.entryId);
 
+// 只保存活跃服务的订阅，不记输入或已通知版本；服务关闭必须注销。
+const compilationListeners = new Map();
+export function subscribePageCompilations(distRoot, listener) {
+  const key = path.resolve(distRoot);
+  const listeners = compilationListeners.get(key) || new Set();
+  listeners.add(listener);
+  compilationListeners.set(key, listeners);
+  return () => {
+    listeners.delete(listener);
+    if (!listeners.size && compilationListeners.get(key) === listeners) compilationListeners.delete(key);
+  };
+}
+
+/** watch 算计划前只等当前队尾，不追赶后继保存，也不另建编译队列。 */
+export function settlePageCompilation(target, distRoot = defaultDistRoot()) {
+  return pageCompilations.get(compilationKey(target, distRoot))?.promise.catch(() => {});
+}
+
 export function compilePage(target, options = {}) {
   if (options.writeDist === false) return compilePageNow(target, options);
   const key = compilationKey(target, options.distRoot || defaultDistRoot());
@@ -846,6 +864,28 @@ async function compilePageNow(target, options = {}) {
   let builtAt = Date.now();
   if (writeDist) {
     const outDir = path.join(distRoot, target.entryId);
+    const listeners = options.publish === false ? null : compilationListeners.get(path.resolve(distRoot));
+    const previous = listeners?.size || onlyScreens ? readBuildJson(distRoot, target.entryId) : null;
+    const boardChanged = listeners?.size && (target.kind === 'article'
+      ? JSON.stringify(readDistBoard(distRoot, target.entryId)) !== JSON.stringify(board)
+      : previous?.boardInput?.sha256 !== boardInput?.sha256 || previous?.boardInput?.realpath !== boardInput?.realpath);
+    let fullReload = false;
+    const updated = listeners?.size ? screens.filter((screen) => {
+      const file = path.join(outDir, `${screen.id}.html`);
+      if (!screen.ok) return previous?.errors?.[screen.id] !== errors[screen.id] || fs.existsSync(file);
+      const source = sources[screen.id];
+      const oldSource = previous?.sources?.[screen.id];
+      const oldInputs = [oldSource, ...(Array.isArray(oldSource?.deps) ? oldSource.deps : [])].filter(Boolean);
+      const jsChanged = [source, ...(source?.deps || [])].filter(Boolean).some(input => {
+        if (!/\.js$/.test(input.file)) return false;
+        const old = oldInputs.find(record => record.file === input.file);
+        return old && (old.realpath !== input.realpath || (old.sha256 && input.sha256
+          ? old.sha256 !== input.sha256 : old.mtimeMs !== input.mtimeMs));
+      });
+      fullReload ||= jsChanged;
+      try { return jsChanged || previous?.errors?.[screen.id] !== undefined || fs.readFileSync(file, 'utf8') !== htmls[screen.id]; }
+      catch { return true; }
+    }).map(screen => screen.id) : [];
     fs.mkdirSync(outDir, { recursive: true });
     for (const [id, html] of Object.entries(htmls)) {
       fs.writeFileSync(path.join(outDir, `${id}.html`), html);
@@ -864,7 +904,7 @@ async function compilePageNow(target, options = {}) {
     let mergedSources = sources;
     let mergedErrors = errors;
     if (onlyScreens) {
-      const old = readBuildJson(distRoot, target.entryId) || {};
+      const old = previous || {};
       // 单屏编译不能替未编兄弟认证新版板（assets/props 可能还留在旧产物中）。
       if (boardInput && (old.tool !== compilerStamp() || old.boardInput?.sha256 !== boardInput.sha256 || old.boardInput?.realpath !== boardInput.realpath)) boardInput = null;
       mergedSources = { ...(old.sources || {}), ...sources };
@@ -901,6 +941,11 @@ async function compilePageNow(target, options = {}) {
       sources: mergedSources,
       errors: mergedErrors,
     }, null, 2) + '\n');
+    // 产物和输入账目都已发布才驱动消费者；相同错误的重试不广播，避免拉取重试环。
+    if (listeners && (boardChanged || updated.length)) for (const listener of [...listeners]) {
+      try { listener({ target, screens: onlyScreens && !boardChanged ? updated : null, fullReload }); }
+      catch (error) { console.error(`[pp2] 编译完成通知 ${target.entryId} 异常：${error?.message || error}`); }
+    }
   }
   return {
     entryId: target.entryId,

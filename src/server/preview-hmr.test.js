@@ -18,6 +18,7 @@ function setup(t, entries) {
   t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
   const plugin = previewHmr({ registry: { entries }, distRoot });
   const server = fakeServer();
+  t.after(() => plugin.closeBundle());
   return Promise.resolve(plugin.configureServer(server)).then(() => ({ plugin, server }));
 }
 
@@ -261,6 +262,7 @@ test('registry dir 源码 add：删除重建后 watcher 重扫只交付 add，di
   const handlers = {};
   const s = fakeServer();
   s.watcher.on = (event, fn) => { handlers[event] = fn; };
+  t.after(() => hit.closeBundle());
   await hit.configureServer(s);
   assert.equal(fs.readFileSync(path.join(distRoot, 'add-page', 'home.html'), 'utf8'), '<div class="ios-app">v1</div>\n');
   // 探针实测的形状：目录删除重建后 v2 写入落在重扫窗口里，Vite 只交付 add
@@ -293,6 +295,7 @@ test('add/unlink 边界：dist、node_modules、未登记路径、无板 dir、f
   const handlers = {};
   const s = fakeServer();
   s.watcher.on = (event, fn) => { handlers[event] = fn; };
+  t.after(() => hit.closeBundle());
   await hit.configureServer(s);
   s.sent.length = 0;
   // 编译产物与依赖目录不进编译分支（盯了就是自触发循环）。
@@ -372,6 +375,7 @@ test('registry dir 的等价路径事件（realpath 拼写）照常归属：chan
   const handlers = {};
   const s = fakeServer();
   s.watcher.on = (event, fn) => { handlers[event] = fn; };
+  t.after(() => hit.closeBundle());
   await hit.configureServer(s);
   assert.equal(fs.readFileSync(path.join(distRoot, 'alias-page', 'a.html'), 'utf8'), '<div class="ios-app">a1</div>\n');
   const bBefore = fs.statSync(path.join(distRoot, 'alias-page', 'b.html')).mtimeMs;
@@ -423,6 +427,7 @@ test('project 文章帧的等价路径 change：归属该篇、单屏重编、�
   t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
   const hit = previewHmr({ registry, distRoot, collectMs: 0 });
   const s = fakeServer();
+  t.after(() => hit.closeBundle());
   await hit.configureServer(s);
   assert.match(fs.readFileSync(path.join(distRoot, 'demo_flow', 'a.html'), 'utf8'), /甲1/);
   const bBefore = fs.statSync(path.join(distRoot, 'demo_flow', 'b.html')).mtimeMs;
@@ -454,6 +459,7 @@ test('canonical 嵌套登记优先于外层 alias：事件 canonical 拼写不�
   ];
   const hit = previewHmr({ registry: { entries }, distRoot, collectMs: 0 });
   const s = fakeServer();
+  t.after(() => hit.closeBundle());
   await hit.configureServer(s);
   assert.equal(fs.readFileSync(path.join(distRoot, 'nest-inner', 'y.html'), 'utf8'), '<div class="ios-app">y1</div>\n');
   const xBefore = fs.statSync(path.join(distRoot, 'nest-outer', 'x.html')).mtimeMs;
@@ -479,6 +485,7 @@ test('project 内容目录登记时不存在、随后创建：等价拼写的 ad
   const handlers = {};
   const s = fakeServer();
   s.watcher.on = (event, fn) => { handlers[event] = fn; };
+  t.after(() => hit.closeBundle());
   await hit.configureServer(s);
 
   const article = path.join(real, 'docs', 'pinpoint', 'articles', 'flow');
@@ -520,6 +527,7 @@ test('嵌套双独立 alias：fallback 选最长等价根，inner dir 与 file �
   ];
   const hit = previewHmr({ registry: { entries }, distRoot, collectMs: 0 });
   const s = fakeServer();
+  t.after(() => hit.closeBundle());
   await hit.configureServer(s);
   assert.equal(fs.readFileSync(path.join(distRoot, 'n3-inner', 'y.html'), 'utf8'), '<div class="ios-app">y1</div>\n');
   const xBefore = fs.statSync(path.join(distRoot, 'n3-outer', 'x.html')).mtimeMs;
@@ -570,6 +578,8 @@ test('已消费 change 混批只通知 alpha；全重复零写零通知；重复
   assert.equal((await compilePage(target, { distRoot })).ok, true);
   const hit = previewHmr({ registry: { entries: [{ id: 'fresh', kind: 'dir', path: pageDir }] }, distRoot, collectMs: 0 });
   const server = fakeServer();
+  t.after(() => hit.closeBundle());
+  await hit.configureServer(server);
   const hot = file => hit.handleHotUpdate({ file: path.join(pageDir, file), server });
   const buildPath = path.join(distRoot, 'fresh', 'build.json');
   const betaPath = path.join(distRoot, 'fresh', 'beta.html');
@@ -600,4 +610,132 @@ test('已消费 change 混批只通知 alpha；全重复零写零通知；重复
   // add 与 change 同批时，后到 change 不能把 add 降级成安全。
   await Promise.all([hit.onProjectFileAddOrRemove(server, path.join(pageDir, 'board.json'), false), hot('board.json')]);
   assert.deepEqual(server.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'fresh' } }]);
+});
+
+test('按需完成发布：已有消费者先订阅，lazy/watch 两种顺序均恰好通知一次', async (t) => {
+  const { EventEmitter } = await import('node:events');
+  const { compilePage, loadDistScreenHtml } = await import('./lib/page-compiler.js');
+  const { resolvePageTarget } = await import('./lib/board-source.js');
+  const { createAnnotateHandler } = await import('./annotate-api.js');
+  const { mockReq, mockRes } = await import('./test-harness.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-lazy-notify-'));
+  const previous = process.env.PINPOINT_DATA_DIR;
+  process.env.PINPOINT_DATA_DIR = path.join(dir, 'data');
+  t.after(() => { if (previous === undefined) delete process.env.PINPOINT_DATA_DIR; else process.env.PINPOINT_DATA_DIR = previous; fs.rmSync(dir, { recursive: true, force: true }); });
+  const distRoot = path.join(dir, 'data/dist');
+  const pageDir = path.join(dir, 'project/docs/pinpoint/articles/flow');
+  fs.mkdirSync(path.join(pageDir, 'components'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'project/docs/pinpoint/project.json'), '{"id":"demo"}');
+  fs.writeFileSync(path.join(pageDir, 'index.mdx'), '<Section id="s" title="S">\n<Canvas frames={["alpha", "beta"]} />\n</Section>\n');
+  const frame = version => `import { Chip } from './components/Chip.jsx';\nimport { label } from './label.js';\nexport default function F(){return <div>${version}{label}<Chip /></div>}\n`;
+  const file = path.join(pageDir, 'alpha.jsx');
+  let generation = 1700000000;
+  const save = version => { fs.writeFileSync(file, frame(version)); fs.utimesSync(file, ++generation, generation); };
+  save('v1');
+  fs.writeFileSync(path.join(pageDir, 'beta.html'), '<div>beta</div>');
+  fs.writeFileSync(path.join(pageDir, 'components/Chip.jsx'), 'export function Chip(){return <span>chip</span>}');
+  fs.writeFileSync(path.join(pageDir, 'label.js'), 'export const label = "label1";');
+  fs.writeFileSync(path.join(pageDir, 'article.js'), 'console.log("sidecar1");');
+  const registry = { entries: [], projects: [{ id: 'demo', kind: 'project', path: path.join(dir, 'project') }] };
+  const target = resolvePageTarget('demo_flow', { registry });
+  const plugin = previewHmr({ registry, distRoot, collectMs: 0 });
+  const server = fakeServer();
+  server.httpServer = new EventEmitter();
+  t.after(() => { server.httpServer.emit('close'); plugin.closeBundle?.(); });
+  const transport = new EventEmitter();
+  let consumerHtml = '';
+  const htmlFile = path.join(distRoot, target.entryId, 'alpha.html');
+  const send = server.ws.send;
+  server.ws.send = message => { send(message); transport.emit('message', message); };
+  transport.on('message', message => { if (message.type === 'full-reload' || message.data?.id === target.entryId) consumerHtml = fs.existsSync(htmlFile) ? fs.readFileSync(htmlFile, 'utf8') : 'error'; });
+  const sseReq = mockReq('GET', '/events'); const sse = mockRes();
+  await createAnnotateHandler({ registry })(sseReq, sse, '/events');
+  t.after(() => sseReq.emit('close'));
+  await plugin.configureServer(server);
+  assert.deepEqual(server.sent, [], '启动编译不广播');
+  consumerHtml = fs.readFileSync(htmlFile, 'utf8');
+  assert.match(consumerHtml, /v1/);
+  const writes = { alpha: 0, beta: 0, build: 0 };
+  const writeFile = fs.writeFileSync;
+  t.mock.method(fs, 'writeFileSync', function (name, ...args) {
+    if (path.dirname(String(name)) === path.join(distRoot, target.entryId)) {
+      const key = { 'alpha.html': 'alpha', 'beta.html': 'beta', 'build.json': 'build' }[path.basename(String(name))];
+      if (key) writes[key]++;
+    }
+    return writeFile.call(this, name, ...args);
+  });
+  const messages = () => server.sent.filter(message => message.data?.id === target.entryId);
+  const expected = { type: 'custom', event: 'preview:update', data: { id: target.entryId, screens: ['alpha'] } };
+  save('v2');
+  assert.match((await loadDistScreenHtml(target, 'alpha')).html, /v2/);
+  assert.deepEqual(writes, { alpha: 1, beta: 0, build: 2 });
+  assert.deepEqual(messages(), [expected], '按需完成时必须驱动已经存在的消费者');
+  assert.match(consumerHtml, /v2/);
+  assert.equal((sse.text.match(/event: preview:update/g) || []).length, 1);
+  assert.ok(sse.text.includes(JSON.stringify(expected.data)), '文章 SSE 收到相同屏更新');
+  t.diagnostic(JSON.stringify({ phase: 'lazy-v2', notifications: messages(), writes: { ...writes }, sseUpdates: 1, consumerV2: /v2/.test(consumerHtml) }));
+  const before = { ...writes };
+  await plugin.handleHotUpdate({ file, server });
+  assert.deepEqual(writes, before, '已消费迟到 change 零重编');
+  assert.deepEqual(messages(), [expected], '已发布迟到 change 不再通知');
+  save('v3');
+  await plugin.handleHotUpdate({ file, server });
+  assert.match(consumerHtml, /v3/);
+  assert.deepEqual(writes, { alpha: 2, beta: 0, build: 4 });
+  assert.match((await loadDistScreenHtml(target, 'alpha')).html, /v3/);
+  await plugin.handleHotUpdate({ file, server });
+  assert.deepEqual(messages(), [expected, expected], 'watch 先编、后续 lazy/重复事件不额外通知');
+  assert.equal((sse.text.match(/event: preview:update/g) || []).length, 2);
+  assert.deepEqual(writes, { alpha: 2, beta: 0, build: 4 });
+  save('v4');
+  const inFlight = loadDistScreenHtml(target, 'alpha');
+  await Promise.all([inFlight, plugin.handleHotUpdate({ file, server })]);
+  assert.match(consumerHtml, /v4/);
+  assert.deepEqual(messages(), [expected, expected, expected], 'lazy 在飞时 watch 复用完成信号');
+  assert.deepEqual(writes, { alpha: 3, beta: 0, build: 6 }, '并发同一稿不重复排编');
+  t.diagnostic(JSON.stringify({ phase: 'watch-v3-concurrent-v4', notifications: messages().length, writes: { ...writes } }));
+  fs.writeFileSync(file, 'export default function Broken(){ return <broken ');
+  fs.utimesSync(file, ++generation, generation);
+  assert.equal((await loadDistScreenHtml(target, 'alpha')).ok, false);
+  assert.equal(consumerHtml, 'error');
+  assert.equal(messages().length, 4, '首次错误也驱动旧消费者');
+  assert.equal((await loadDistScreenHtml(target, 'alpha')).ok, false);
+  assert.equal(messages().length, 4, '相同失败重试不再广播，避免请求环');
+  assert.deepEqual(writes, { alpha: 3, beta: 0, build: 10 });
+  save('v5');
+  assert.match((await loadDistScreenHtml(target, 'alpha')).html, /v5/);
+  assert.match(consumerHtml, /v5/);
+  assert.equal(messages().length, 5, '错误修复重新驱动消费者');
+  assert.deepEqual(writes, { alpha: 4, beta: 0, build: 12 });
+  const beforeJs = server.sent.length;
+  const js = path.join(pageDir, 'label.js');
+  fs.writeFileSync(js, 'export const label = "label2";');
+  fs.utimesSync(js, ++generation, generation);
+  assert.match((await loadDistScreenHtml(target, 'alpha')).html, /label2/);
+  assert.deepEqual(server.sent.slice(beforeJs), [{ type: 'full-reload' }], '按需消费真实 JS 改稿仍全文 reload');
+  assert.match(consumerHtml, /label2/);
+  await plugin.handleHotUpdate({ file: js, server });
+  assert.equal(server.sent.length, beforeJs + 1, '已发布 JS 的迟到事件不重复 reload');
+  assert.deepEqual(writes, { alpha: 5, beta: 0, build: 14 });
+  const beforeSidecar = server.sent.length;
+  const sidecar = path.join(pageDir, 'article.js');
+  fs.writeFileSync(sidecar, 'console.log("sidecar2");');
+  await plugin.handleHotUpdate({ file: sidecar, server });
+  assert.deepEqual(server.sent.slice(beforeSidecar), [{ type: 'full-reload' }], '未编入 deps 的 sidecar 仍走原 full reload');
+  assert.deepEqual(writes, { alpha: 6, beta: 1, build: 16 });
+  const beforeKit = server.sent.length;
+  await plugin.handleHotUpdate({ file: path.join(ROOT, 'content/kits/ios/jsx/Chip.jsx'), server });
+  assert.deepEqual(server.sent.slice(beforeKit).filter(message => message.data?.id === target.entryId), [{ type: 'custom', event: 'preview:update', data: { id: target.entryId } }], 'kit 全编只走一次原整板发布');
+  assert.deepEqual(writes, { alpha: 7, beta: 2, build: 18 });
+  t.diagnostic(JSON.stringify({ phase: 'errors-js-sidecar-kit', notifications: server.sent, sseUpdates: (sse.text.match(/event: preview:update/g) || []).length, writes: { ...writes } }));
+  const published = [...server.sent];
+  save('render-only');
+  await compilePage(target, { distRoot, onlyScreen: 'alpha', writeDist: false });
+  assert.deepEqual(server.sent, published, 'render 不发布');
+  await compilePage(target, { distRoot: path.join(dir, 'other-dist'), onlyScreen: 'alpha' });
+  assert.deepEqual(server.sent, published, '其它 distRoot 不进入本服务完成订阅');
+  server.httpServer.emit('close');
+  plugin.closeBundle?.();
+  await compilePage(target, { distRoot, onlyScreen: 'alpha' });
+  assert.deepEqual(server.sent, published, '销毁后不遗留完成 listener');
 });

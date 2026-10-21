@@ -241,6 +241,7 @@ test('watch：project 内容目录进 watcher；帧变更重编并通知画布�
   const distRoot = path.join(dir, 'dist');
   const plugin = previewHmr({ registry, distRoot });
   const server = fakeServer();
+  t.after(() => plugin.closeBundle());
   await plugin.configureServer(server);
   assert.ok(server.added.includes(content), JSON.stringify(server.added));
 
@@ -276,6 +277,7 @@ test('projects:update：文章增删、标题、project 标题、布局错误变
   const { registry, article, content, dir } = fixture(t);
   const plugin = previewHmr({ registry, distRoot: path.join(dir, 'dist') });
   const server = fakeServer();
+  t.after(() => plugin.closeBundle());
   await plugin.configureServer(server);
   const projectEvents = () => server.sent.filter((m) => m.event === 'projects:update');
   const UPDATE = { type: 'custom', event: 'projects:update', data: { project: 'demo' } };
