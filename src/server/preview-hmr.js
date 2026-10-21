@@ -230,16 +230,32 @@ export default function previewHmr(options = {}) {
     return Promise.all(targets.map((target) => recompile(server, target, [file]))).then(() => []);
   }
 
-  // Vite 6 只对“改了”的文件调 handleHotUpdate；新建、删除走 hotUpdate 钩子，这个插件
-  // 没有用它。project 目录里的新建 / 删除（加一篇文章、删一篇文章、新帧文件）在这里接住：
-  // 列表那一层照样比对 digest，新建的源文件照样重编它那一篇（M4 实测：新文章不这样
-  // 接就既不进左栏、画布也不编）。
+  // Vite 6 只对“改了”的文件调 handleHotUpdate；新建、删除走 watcher 的 add/unlink，
+  // 由 configureServer 挂到这里。已登记源码的 add 走与 change 一致的归属/过滤/编译/
+  // 通知路径：删除并重建已登记目录时，v2 写入常落在 watcher 重扫窗口里，只交付 add
+  // （hmr-watch-probe 实测），不接 add 就没有 hot/重编/通知，dist 停在旧版。
+  // - project 内容目录（M4）：列表那一层比对 digest，新建的源文件重编它那一篇。
+  // - 模板页 / 带板的 registry dir 条目（同根因入口）：复用 ownerFor（嵌套取最长路径）
+  //   与 recompile，和 change 走同一条编译队列与通知。
+  // 保持的边界：file 条目与无板 dir 的 add 不通知（change 的「无编译目标 → 通知」分支
+  // 不搬过来——新建文件没有待刷新的编译产物）；删除只刷 project 列表 digest，不重编
+  // 不通知页（删除的编译语义不在此重设计）。
   function onProjectFileAddOrRemove(server, file, removed) {
-    if (!projectDirs().some((project) => file.startsWith(project.dir + path.sep))) return Promise.resolve([]);
-    notifyProjectChange(server, file);
+    const inProject = projectDirs().some((project) => file.startsWith(project.dir + path.sep));
+    if (inProject) notifyProjectChange(server, file);
     if (removed || !isWatchedSource(file, { distRoot: distRoot || defaultDistRoot() })) return Promise.resolve([]);
-    const targets = articleTargetsFor(file);
-    return targets.length ? recompileArticles(server, targets, file) : Promise.resolve([]);
+    if (inProject) {
+      const targets = articleTargetsFor(file);
+      return targets.length ? recompileArticles(server, targets, file) : Promise.resolve([]);
+    }
+    const preview = file.replace(/\\/g, '/').match(PREVIEWS_FILE);
+    if (preview) {
+      const target = templateTarget(preview[1]);
+      return target ? recompile(server, target, [file]).then(() => []) : Promise.resolve([]);
+    }
+    const owner = ownerFor(file);
+    const target = owner && owner.kind === 'dir' ? resolvePageTarget(owner.id, { registry, root: ROOT }) : null;
+    return target ? recompile(server, target, [file]).then(() => []) : Promise.resolve([]);
   }
 
   function templateTarget(pageId) {
@@ -265,8 +281,9 @@ export default function previewHmr(options = {}) {
       watcher = server.watcher;
       syncWatcher();
       if (watcher && typeof watcher.on === 'function') {
-        watcher.on('add', (file) => { onProjectFileAddOrRemove(server, file, false); });
-        watcher.on('unlink', (file) => { onProjectFileAddOrRemove(server, file, true); });
+        // 返回 Promise 只是让测试能 await 到编译收尾；chokidar 忽略返回值。
+        watcher.on('add', (file) => onProjectFileAddOrRemove(server, file, false));
+        watcher.on('unlink', (file) => onProjectFileAddOrRemove(server, file, true));
       }
       // 启动编译（probe）：dist 已是最新（同一版编译器、源码与板没动过）的页整页
       // 跳过，只编改动过的页 —— 重启不再为没变的东西付全量编译。总耗时 + 每页

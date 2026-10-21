@@ -241,6 +241,71 @@ test('增量重编的通知带屏清单（S2/F2：工作台按屏重摆）；整
   assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'screens-page', screens: ['a'] } }]);
 });
 
+test('registry dir 源码 add：删除重建后 watcher 重扫只交付 add，dist 从 v1 到 v2 并发 preview:update（hmr-watch-probe 根因）', async (t) => {
+  const pageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-add-'));
+  t.after(() => fs.rmSync(pageDir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(pageDir, 'board.json'), JSON.stringify({
+    sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'home', title: 'Home' }] }],
+  }));
+  fs.writeFileSync(path.join(pageDir, 'home.html'), '<div class="ios-app">v1</div>\n');
+  const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-dist-'));
+  t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
+  const hit = previewHmr({ registry: { entries: [{ id: 'add-page', kind: 'dir', path: pageDir }] }, distRoot, collectMs: 0 });
+  // 真实 configureServer 注册的 add 回调：fakeServer 的 watcher 补上 on 收集，
+  // 事件从注册入口进，编译与磁盘产物全真。
+  const handlers = {};
+  const s = fakeServer();
+  s.watcher.on = (event, fn) => { handlers[event] = fn; };
+  await hit.configureServer(s);
+  assert.equal(fs.readFileSync(path.join(distRoot, 'add-page', 'home.html'), 'utf8'), '<div class="ios-app">v1</div>\n');
+  // 探针实测的形状：目录删除重建后 v2 写入落在重扫窗口里，Vite 只交付 add
+  // （handleHotUpdate 收不到），dist 停在 v1。
+  fs.writeFileSync(path.join(pageDir, 'home.html'), '<div class="ios-app">v2</div>\n');
+  await handlers.add(path.join(pageDir, 'home.html'));
+  assert.equal(fs.readFileSync(path.join(distRoot, 'add-page', 'home.html'), 'utf8'), '<div class="ios-app">v2</div>\n');
+  assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'add-page', screens: ['home'] } }]);
+});
+
+test('add/unlink 边界：dist、node_modules、未登记路径、无板 dir、file 条目的 add 与 dir 条目的 unlink 都不重编不通知', async (t) => {
+  const pageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-add-edge-'));
+  t.after(() => fs.rmSync(pageDir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(pageDir, 'board.json'), JSON.stringify({
+    sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'home', title: 'Home' }] }],
+  }));
+  fs.writeFileSync(path.join(pageDir, 'home.html'), '<div class="ios-app">v1</div>\n');
+  const plainDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-plain-'));
+  t.after(() => fs.rmSync(plainDir, { recursive: true, force: true }));
+  const singleFile = path.join(plainDir, 'single.html');
+  fs.writeFileSync(singleFile, '<p>单文件</p>\n');
+  const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-dist-'));
+  t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
+  const entries = [
+    { id: 'add-page', kind: 'dir', path: pageDir },
+    { id: 'plain-dir', kind: 'dir', path: plainDir },
+    { id: 'one-file', kind: 'file', path: singleFile },
+  ];
+  const hit = previewHmr({ registry: { entries }, distRoot, collectMs: 0 });
+  const handlers = {};
+  const s = fakeServer();
+  s.watcher.on = (event, fn) => { handlers[event] = fn; };
+  await hit.configureServer(s);
+  s.sent.length = 0;
+  // 编译产物与依赖目录不进编译分支（盯了就是自触发循环）。
+  await handlers.add(path.join(distRoot, 'add-page', 'home.html'));
+  await handlers.add(path.join(pageDir, 'node_modules', 'pkg', 'index.js'));
+  await handlers.add(path.join(pageDir, 'build.json'));
+  // 未登记路径不管。
+  await handlers.add(path.join(os.tmpdir(), 'elsewhere.html'));
+  // 无板 dir 与 file 条目的 add 保持不重编不通知（change 的「无编译目标 → 通知」
+  // 分支不搬到 add：无板目录新建文件没有待刷新的编译产物）。
+  await handlers.add(path.join(plainDir, 'new.html'));
+  await handlers.add(singleFile);
+  // 删除维持原边界：registry 条目的 unlink 不重编不通知（只 project 刷列表 digest）。
+  await handlers.unlink(path.join(pageDir, 'home.html'));
+  assert.deepEqual(s.sent, []);
+  assert.equal(fs.readFileSync(path.join(distRoot, 'add-page', 'home.html'), 'utf8'), '<div class="ios-app">v1</div>\n');
+});
+
 test('首事件等一小拍收同伴：收集窗走完、收口之前才到的第二拍仍并进同一次编译（S2/F3）', async (t) => {
   const pageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-collect-'));
   t.after(() => fs.rmSync(pageDir, { recursive: true, force: true }));
