@@ -429,3 +429,65 @@ test('project 文章帧的等价路径 change：归属该篇、单屏重编、�
   assert.match(fs.readFileSync(path.join(distRoot, 'demo_flow', 'a.html'), 'utf8'), /甲2/);
   assert.equal(fs.statSync(path.join(distRoot, 'demo_flow', 'b.html')).mtimeMs, bBefore, '兄弟帧不重编');
 });
+
+test('canonical 嵌套登记优先于外层 alias：事件 canonical 拼写不被改写到 alias 根（review 反例①）', async (t) => {
+  const { real, alias } = aliasPair(t, 'pp-hmr-nest-');
+  // 外层按 alias 拼写登记，内层按 canonical（realpath）拼写登记——同一 real 的双覆盖。
+  fs.writeFileSync(path.join(real, 'board.json'), JSON.stringify({
+    sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'x', title: 'X' }] }],
+  }));
+  fs.writeFileSync(path.join(real, 'x.html'), '<div class="ios-app">x1</div>\n');
+  fs.mkdirSync(path.join(real, 'sub'), { recursive: true });
+  fs.writeFileSync(path.join(real, 'sub', 'board.json'), JSON.stringify({
+    sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'y', title: 'Y' }] }],
+  }));
+  fs.writeFileSync(path.join(real, 'sub', 'y.html'), '<div class="ios-app">y1</div>\n');
+  const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-dist-'));
+  t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
+  const entries = [
+    { id: 'nest-outer', kind: 'dir', path: alias },
+    { id: 'nest-inner', kind: 'dir', path: path.join(real, 'sub') },
+  ];
+  const hit = previewHmr({ registry: { entries }, distRoot, collectMs: 0 });
+  const s = fakeServer();
+  await hit.configureServer(s);
+  assert.equal(fs.readFileSync(path.join(distRoot, 'nest-inner', 'y.html'), 'utf8'), '<div class="ios-app">y1</div>\n');
+  const xBefore = fs.statSync(path.join(distRoot, 'nest-outer', 'x.html')).mtimeMs;
+
+  // canonical 拼写的事件原本就能按 raw 归属内层：不许被等价改写抢去外层。
+  s.sent.length = 0;
+  fs.writeFileSync(path.join(real, 'sub', 'y.html'), '<div class="ios-app">y2</div>\n');
+  await hit.handleHotUpdate({ file: path.join(real, 'sub', 'y.html'), server: s });
+  assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'nest-inner', screens: ['y'] } }]);
+  assert.equal(fs.readFileSync(path.join(distRoot, 'nest-inner', 'y.html'), 'utf8'), '<div class="ios-app">y2</div>\n');
+  assert.equal(fs.statSync(path.join(distRoot, 'nest-outer', 'x.html')).mtimeMs, xBefore, '外层不被抢编');
+});
+
+test('project 内容目录登记时不存在、随后创建：等价拼写的 add 仍归该篇（review 反例②）', async (t) => {
+  const { real, alias } = aliasPair(t, 'pp-hmr-late-');
+  // 登记时还没有 docs/pinpoint——等价解析不能依赖 sync 时刻的缓存表。
+  const registryPath = path.join(real, 'registry.json');
+  fs.writeFileSync(registryPath, JSON.stringify({ version: 1, entries: [{ id: 'late', kind: 'project', path: alias }] }));
+  const registry = loadRegistry({ path: registryPath, root: real, log: () => {} });
+  const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-dist-'));
+  t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
+  const hit = previewHmr({ registry, distRoot, collectMs: 0 });
+  const handlers = {};
+  const s = fakeServer();
+  s.watcher.on = (event, fn) => { handlers[event] = fn; };
+  await hit.configureServer(s);
+
+  const article = path.join(real, 'docs', 'pinpoint', 'articles', 'flow');
+  fs.mkdirSync(article, { recursive: true });
+  fs.writeFileSync(path.join(real, 'docs', 'pinpoint', 'project.json'), JSON.stringify({ id: 'late', title: 'Late' }));
+  fs.writeFileSync(path.join(article, 'index.mdx'), '---\ntitle: 流程\n---\n\n<Section id="s" title="节">\n\n<Canvas frames={["a"]} />\n\n</Section>\n');
+  fs.writeFileSync(path.join(article, 'a.jsx'), 'export default function A() {\n  return <div className="ios-app">迟1</div>;\n}\n');
+  // watcher 重扫交付 realpath 拼写的 add：归属该篇、真编译、发 preview:update。
+  s.sent.length = 0;
+  await handlers.add(path.join(article, 'a.jsx'));
+  assert.deepEqual(
+    s.sent.filter((m) => m.event === 'preview:update'),
+    [{ type: 'custom', event: 'preview:update', data: { id: 'late_flow' } }],
+  );
+  assert.match(fs.readFileSync(path.join(distRoot, 'late_flow', 'a.html'), 'utf8'), /迟1/);
+});
