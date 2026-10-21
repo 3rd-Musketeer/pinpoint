@@ -38,7 +38,7 @@ export const PROJECT_CONTENT_DIR = path.join('docs', 'pinpoint');
  * （`{ id, src }` 写法的 HTML 帧从这两处找，docs/projects.md“HTML 帧”）。
  * 文章目录或 index.mdx 不在时 null。
  */
-function articleTarget(entry, articleId, pageId) {
+function articleTarget(entry, articleId, pageId, sources) {
   if (!entry || typeof entry.path !== 'string' || RESERVED_ARTICLE_IDS.has(articleId)) return null;
   const projectDir = path.join(path.resolve(entry.path), PROJECT_CONTENT_DIR);
   const articleDir = path.join(projectDir, 'articles', articleId);
@@ -54,7 +54,7 @@ function articleTarget(entry, articleId, pageId) {
     projectId: entry.id,
     articleId,
     projectRoot: path.resolve(entry.path),
-    sources: loadProjectSources(path.resolve(entry.path)).sources,
+    sources,
     projectDir,
     articleFile,
   };
@@ -67,7 +67,9 @@ function articleTarget(entry, articleId, pageId) {
 export function resolveArticleTarget(registry, pageId) {
   const ids = parseArticlePageId(pageId);
   if (!ids) return null;
-  return articleTarget(projectEntry(registry, ids.projectId), ids.articleId, pageId);
+  const entry = projectEntry(registry, ids.projectId);
+  if (!entry) return null;
+  return articleTarget(entry, ids.articleId, pageId, loadProjectSources(path.resolve(entry.path)).sources);
 }
 
 /** 一个 project 条目下的全部文章画布目标，按目录名排序。 */
@@ -81,6 +83,8 @@ export function projectArticleTargets(entry) {
   } catch {
     return [];
   }
+  // project.json 一个 project 读一次，旗下每篇文章共用。
+  const sources = loadProjectSources(path.resolve(entry.path)).sources;
   const targets = [];
   for (const name of names) {
     let pageId;
@@ -89,7 +93,7 @@ export function projectArticleTargets(entry) {
     } catch {
       continue; // 目录名不合 id 规则：listProjects 已记布局错误
     }
-    const target = articleTarget(entry, name, pageId);
+    const target = articleTarget(entry, name, pageId, sources);
     if (target) targets.push(target);
   }
   return targets;

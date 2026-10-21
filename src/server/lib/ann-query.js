@@ -57,20 +57,12 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
 
-/** 一个桶目录下的全部账本行（跳过 _seq.json；坏文件跳过）。行带 __ledger 与
+/** 已读账本（readBucketLedgers 的 {name, doc}）摊成行。行带 __ledger 与
     __docPath（账本的表面路径，doc 页标注按路径分账本，check 显示用）。 */
-function readBucketRows(bucketPath) {
+function rowsOfLedgers(ledgers) {
   const out = [];
-  if (!fs.existsSync(bucketPath)) return out;
-  for (const name of fs.readdirSync(bucketPath).sort()) {
-    if (!name.endsWith('.json') || name === '_seq.json') continue;
-    let doc;
-    try {
-      doc = JSON.parse(fs.readFileSync(path.join(bucketPath, name), 'utf8'));
-    } catch {
-      continue;
-    }
-    const rows = Array.isArray(doc.annotations) ? doc.annotations : [];
+  for (const { name, doc } of ledgers) {
+    const rows = Array.isArray(doc && doc.annotations) ? doc.annotations : [];
     const ledger = name.replace(/\.json$/, '');
     const docPath = typeof doc.path === 'string' ? doc.path : '';
     for (const row of rows) {
@@ -88,9 +80,9 @@ function readBucketRows(bucketPath) {
  * 它们的行不进计数、不走引用解析，只由 check / status 单独列出。
  * 返回 { frameRows, docRows }；行上带 __bucket / __ledger，mark 回写时用。
  */
-export function collectPageRows({ root, pageId, skipLedgers = [] }) {
+export function collectPageRows({ root, pageId, skipLedgers = [], ledgers = null }) {
   const skip = new Set(skipLedgers);
-  const rows = readBucketRows(path.join(root, pageId))
+  const rows = rowsOfLedgers(ledgers || readBucketLedgers(path.join(root, pageId)))
     .filter((row) => !skip.has(row.__ledger))
     .map((row) => ({ ...row, __bucket: pageId }));
   const frameRows = rows.filter((row) => row.__ledger === CANVAS_LEDGER);
@@ -159,6 +151,8 @@ function articleInfo(target) {
 }
 
 function contextWithRows({ registry, repoRoot, dataRootValue, pageId, target, board, isManifestPage }) {
+  // 桶只读这一次：孤儿分类、行装配、孤儿行的账本归属都从这份结果派生。
+  const ledgers = readBucketLedgers(path.join(dataRootValue, pageId));
   const orphanLedgers = collectPageOrphans({
     pageId,
     dataRoot: dataRootValue,
@@ -166,21 +160,25 @@ function contextWithRows({ registry, repoRoot, dataRootValue, pageId, target, bo
     isManifestPage,
     previewsRoot: path.join(repoRoot, 'content', 'previews'),
     article: target && target.kind === 'article' ? target : null,
+    ledgers,
   });
+  const orphanNames = new Set(orphanLedgers);
   const collected = collectPageRows({
     root: dataRootValue,
     pageId,
     skipLedgers: orphanLedgers.map((name) => name.replace(/\.json$/, '')),
+    ledgers,
   });
   const { frameRows, docRows } = target && target.kind === 'article' && board
     ? attachDocFrameRows(collected, board, target.urlBase)
     : collected;
-  const orphanRows = readBucketLedgers(path.join(dataRootValue, pageId))
-    .filter((ledger) => orphanLedgers.includes(ledger.name))
+  const ledgerOfRow = orphanLedgerById(ledgers, orphanNames);
+  const orphanRows = ledgers
+    .filter((ledger) => orphanNames.has(ledger.name))
     .flatMap((ledger) => (Array.isArray(ledger.doc.annotations) ? ledger.doc.annotations : [])
       .map((row) => normalizeAnnotation(row)))
     .filter(Boolean)
-    .map((row) => ({ ...row, __bucket: pageId, __ledger: orphanLedgerOf(row, orphanLedgers, path.join(dataRootValue, pageId)) }));
+    .map((row) => ({ ...row, __bucket: pageId, __ledger: ledgerOfRow(row) }));
   return { pageId, target, board, refs: boardRefs(board || {}), frameRows, docRows, orphanLedgers, orphanRows, article: articleInfo(target) };
 }
 
@@ -227,7 +225,7 @@ export function loadPageContext({ pageRef, registryPath = null, root = null, dat
     pageId: target.entryId,
     target,
     board,
-    isManifestPage: (resolvePage(registry, target.entryId, { manifestIds: manifestPageIds(repoRoot) }) || {}).kind === 'template',
+    isManifestPage: manifestPageIds(repoRoot).includes(target.entryId),
   });
 }
 
@@ -263,17 +261,20 @@ function bucketOrphanContext(dataRootValue, pageId) {
   };
 }
 
-function orphanLedgerOf(row, orphanLedgers, bucketPath) {
-  // 行来自哪本孤儿账本不可靠（行上没有账本信息），这里只为显示服务：逐本比对 id。
-  for (const name of orphanLedgers) {
-    try {
-      const doc = JSON.parse(fs.readFileSync(path.join(bucketPath, name), 'utf8'));
-      if (Array.isArray(doc.annotations) && doc.annotations.some((a) => a && a.id && a.id === row.id)) {
-        return name.replace(/\.json$/, '');
-      }
-    } catch { /* 坏文件跳过 */ }
+/** 孤儿行 → 它那本账本的名字（不带 .json）。行上没有账本信息，只为显示服务：
+    在已读的孤儿账本里按 id 对，对不上就归第一本。 */
+function orphanLedgerById(ledgers, orphanNames) {
+  const byId = new Map();
+  let first = '';
+  for (const { name, doc } of ledgers) {
+    if (!orphanNames.has(name)) continue;
+    const ledger = name.replace(/\.json$/, '');
+    if (!first) first = ledger;
+    for (const row of Array.isArray(doc && doc.annotations) ? doc.annotations : []) {
+      if (row && row.id && !byId.has(row.id)) byId.set(row.id, ledger);
+    }
   }
-  return orphanLedgers[0] ? orphanLedgers[0].replace(/\.json$/, '') : '';
+  return (row) => byId.get(row.id) || first;
 }
 
 /* ---- 锚点解析：ppId 直取 → selector 链 ---- */

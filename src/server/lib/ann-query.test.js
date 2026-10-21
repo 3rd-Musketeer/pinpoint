@@ -10,6 +10,7 @@ import {
   buildCheckReport,
   collectPageRows,
   countByStatus,
+  loadPageContext,
   formatCheckMarkdown,
   intentOf,
   locateLine,
@@ -145,6 +146,29 @@ describe('collectPageRows', () => {
     assert.equal(skipped.frameRows.length, 0);
     assert.equal(skipped.docRows.length, 1);
   });
+});
+
+test('loadPageContext 一只桶只读一次：孤儿行的账本归属从这一次派生', (t) => {
+  const site = makeSite();
+  fs.rmSync(path.join(site.pageDir, 'old.html'));
+  fs.writeFileSync(path.join(site.dataRoot, 'demo-page', 'old.html~1.json'), JSON.stringify({
+    page: 'old.html~1', path: '/sites/demo-page/old.html', revision: 1,
+    annotations: [{ id: 'o1', n: 1, content: '孤儿一', status: 'open' }, { id: 'o2', n: 2, content: '孤儿二', status: 'open' }],
+  }));
+  const registryFile = path.join(tmp, 'registry.json');
+  fs.writeFileSync(registryFile, JSON.stringify({ version: 1, entries: [{ id: 'demo-page', kind: 'dir', path: site.pageDir }] }));
+  const reads = new Map();
+  const original = fs.readFileSync;
+  t.mock.method(fs, 'readFileSync', (...args) => {
+    const key = path.basename(String(args[0]));
+    reads.set(key, (reads.get(key) || 0) + 1);
+    return original.apply(fs, args);
+  });
+  const ctx = loadPageContext({ pageRef: 'demo-page', registryPath: registryFile, root: tmp, dataRootDir: site.dataRoot });
+  t.mock.restoreAll();
+  assert.deepEqual(ctx.orphanRows.map((row) => [row.id, row.__ledger]), [['o1', 'old.html~1'], ['o2', 'old.html~1']]);
+  assert.equal(reads.get('old.html~1.json'), 1, '归属不再逐行重读账本');
+  assert.equal(reads.get('@canvas.json'), 1);
 });
 
 describe('anchorComp', () => {

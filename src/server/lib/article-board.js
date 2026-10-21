@@ -199,8 +199,9 @@ export function articleCanvas(projectId, articleId, { registry = null } = {}) {
  * 工作台清单用的文章画布页（GET /registry 的 articles）：不进左栏 Pages，只让
  * `/workbench/?page=<页 id>` 认得它。[{ id, title, project, article, url }]
  */
-export function articlePageRows(registry) {
-  return listArticleTargets(registry).map((target) => {
+/** targets 给了就用它（调用方已经列过文章目标），否则自己列。 */
+export function articlePageRows(registry, targets = null) {
+  return (targets || listArticleTargets(registry)).map((target) => {
     let title = target.articleId;
     try {
       title = parseFrontmatter(fs.readFileSync(target.articleFile, 'utf8')).data.title || title;

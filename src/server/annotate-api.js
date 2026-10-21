@@ -1,5 +1,5 @@
 import { collectPageTimes } from './lib/page-times.js';
-import { collectOrphanCounts } from './lib/orphans.js';
+import { collectOrphanCounts, readBucketLedgers } from './lib/orphans.js';
 import { listArticleTargets, pageIdIsLive } from './lib/page-resolve.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -180,12 +180,20 @@ export function createAnnotateHandler(options = {}) {
   // GET /registry 的完整载荷。
   function registryPayload() {
     const localIds = manifestPageIds(serviceRoot);
-    const pageTimes = collectPageTimes({ entries: registry.entries, root: serviceRoot, dataRoot: root, localIds });
+    // 文章目标只列这一次：清单行和孤儿计数共用。
+    const targets = listArticleTargets(registry);
+    // 每只桶只读这一次：页时间和孤儿行数都从这份结果派生。
+    const buckets = new Map();
+    const ledgersOf = (pageId) => {
+      if (!buckets.has(pageId)) buckets.set(pageId, readBucketLedgers(path.join(root, pageId)));
+      return buckets.get(pageId);
+    };
+    const pageTimes = collectPageTimes({ entries: registry.entries, root: serviceRoot, dataRoot: root, localIds, ledgersOf });
     // storage-unify：每页的孤儿账本数（表面已不存在的账本；页信息面板显示，
     // 清理只经 ppnt prune）。
-    const articles = articlePageRows(registry);
+    const articles = articlePageRows(registry, targets);
     const orphanCounts = collectOrphanCounts({
-      entries: registry.entries, dataRoot: root, localIds, root: serviceRoot, articleTargets: listArticleTargets(registry),
+      entries: registry.entries, dataRoot: root, localIds, root: serviceRoot, articleTargets: targets, ledgersOf,
     });
     for (const [id, count] of Object.entries(orphanCounts)) {
       if (pageTimes[id]) pageTimes[id].orphans = count;

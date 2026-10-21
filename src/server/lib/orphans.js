@@ -119,10 +119,11 @@ export function staleBucketProblem(dataRoot, pageId, { renameHint }) {
   return `标注桶 ${bucket} 里已有 ${rows} 行标注（旧文章留下的孤儿）；建成新文章它们会挂上去。${renameHint}，或先 \`ppnt prune ${pageId}\` 清掉`;
 }
 
-/** 一页的孤儿账本文件名列表。文章页要给 article（它的编译目标），否则本篇的 HTML 帧账本无从判。 */
-export function collectPageOrphans({ pageId, dataRoot, entries, isManifestPage = false, previewsRoot, article = null }) {
+/** 一页的孤儿账本文件名列表。文章页要给 article（它的编译目标），否则本篇的 HTML 帧账本无从判。
+    ledgers 给了就用它（调用方已经读过这只桶）。 */
+export function collectPageOrphans({ pageId, dataRoot, entries, isManifestPage = false, previewsRoot, article = null, ledgers = null }) {
   const spaces = pageSurfaceSpaces({ pageId, entries, isManifestPage, previewsRoot, article });
-  return readBucketLedgers(path.join(dataRoot, pageId))
+  return (ledgers || readBucketLedgers(path.join(dataRoot, pageId)))
     .filter((ledger) => ledgerIsOrphan(ledger, spaces))
     .map((ledger) => ledger.name);
 }
@@ -134,14 +135,16 @@ export function collectBucketOrphans(pageId, dataRoot) {
 
 /** 每个已知页的孤儿行数（GET /registry 的页信息用）。口径 = 行数（K7）；
     一本孤儿账本可能装着几十行。
-    articleTargets = 活的文章画布页的编译目标（它们不在 entries 里，桶照样要数，HTML 帧账本按它判）。 */
-export function collectOrphanCounts({ entries, dataRoot, localIds, root, articleTargets = [] }) {
+    articleTargets = 活的文章画布页的编译目标（它们不在 entries 里，桶照样要数，HTML 帧账本按它判）。
+    ledgersOf(pageId) 给了，分类和行数都从这份已读账本派生，每只桶只读一次。 */
+export function collectOrphanCounts({ entries, dataRoot, localIds, root, articleTargets = [], ledgersOf = null }) {
   const previewsRoot = path.join(root, 'content', 'previews');
   const articles = new Map(articleTargets.map((target) => [target.entryId, target]));
   const ids = new Set([...localIds, ...articles.keys()]);
   for (const entry of entries) if (entry.id !== 'pinpoint' && entry.kind !== 'project') ids.add(entry.id);
   const out = {};
   for (const pageId of ids) {
+    const ledgers = ledgersOf ? ledgersOf(pageId) : readBucketLedgers(path.join(dataRoot, pageId));
     const orphanLedgers = new Set(collectPageOrphans({
       pageId,
       dataRoot,
@@ -149,8 +152,9 @@ export function collectOrphanCounts({ entries, dataRoot, localIds, root, article
       isManifestPage: localIds.includes(pageId),
       previewsRoot,
       article: articles.get(pageId) || null,
+      ledgers,
     }));
-    out[pageId] = readBucketLedgers(path.join(dataRoot, pageId))
+    out[pageId] = ledgers
       .filter((ledger) => orphanLedgers.has(ledger.name))
       .reduce((sum, ledger) => sum + annotationsCount(ledger.doc), 0);
   }

@@ -84,6 +84,32 @@ test('/save：桶在写入途中被删 → 503 bucket_gone，带说明，不是 
   assert.match(json.message, /在写入途中被删除或移走/);
 });
 
+test('GET /registry 一只桶只读一次：页时间和孤儿行数共用这一次', async (t) => {
+  const { dir, dataRoot, registry, handler } = withFixture(t);
+  const bucket = path.join(dataRoot, 'web');
+  fs.mkdirSync(bucket, { recursive: true });
+  // 表面不在了：既要进页时间，又是孤儿行，旧装配会把这本账本读三遍。
+  fs.writeFileSync(path.join(bucket, 'gone~1.json'), JSON.stringify({
+    page: 'gone~1', path: '/sites/web/gone.html', revision: 1, updated_at: '2026-10-21T10:00:00.000Z',
+    annotations: [{ id: 'g1' }, { id: 'g2' }],
+  }));
+  const reads = new Map();
+  const original = fs.readFileSync;
+  t.mock.method(fs, 'readFileSync', (...args) => {
+    const key = path.basename(String(args[0]));
+    reads.set(key, (reads.get(key) || 0) + 1);
+    return original.apply(fs, args);
+  });
+  const { res, json } = await call(handler, 'GET', '/registry');
+  t.mock.restoreAll();
+  assert.equal(res.statusCode, 200);
+  const web = json.entries.find((entry) => entry.id === 'web');
+  assert.equal(web.annotatedAt, Date.parse('2026-10-21T10:00:00.000Z'));
+  assert.equal(web.orphans, 2);
+  assert.equal(reads.get('gone~1.json'), 1, '同一只桶的账本在一次应答里只读一次');
+  assert.equal(dir.length > 0, true);
+});
+
 test('resolveRequestEntry defaults missing entry to pinpoint and flags unknown ids', (t) => {
   const { registry } = withFixture(t);
   assert.deepEqual(resolveRequestEntry(registry, undefined), { entry: 'pinpoint' });
