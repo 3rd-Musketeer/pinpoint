@@ -70,11 +70,21 @@ test('owner 性能首开画布：97 帧挂齐最多 15 秒', async ({ page }, te
 
 test('owner 性能首开文章：帧请求全为 2xx，请求数最多 206', async ({ page }, testInfo) => {
   const requests = [];
+  const shellRequests = [];
   const pending = new Set();
-  const watched = request => /^\/(api\/frame|sites\/)/.test(new URL(request.url()).pathname);
+  // 三类分开数：真实帧文档（/api/frame 精确路径）、/sites/ 资源、每张帧文档都引用的
+  // 共享外壳（/api/frame-shell.css、/api/frame-boot.js，版本摘要进 query）。旧前缀正则
+  // /^\/(api\/frame|sites\/)/ 把两条外壳也算成帧请求（r3 首跑 389 条里约 194 条是外壳，
+  // 外壳 no-cache + ETag 重验证的 304 又被算成非 2xx）。/api/frame* 命名空间只有这三条
+  // 路由（content-routes.js / frame-doc.js），精确匹配不会漏真实帧请求。
+  const SHELL_PATHS = new Set(['/api/frame-shell.css', '/api/frame-boot.js']);
+  const pathOf = request => new URL(request.url()).pathname;
+  const isShell = request => SHELL_PATHS.has(pathOf(request));
+  const watched = request => pathOf(request) === '/api/frame' || pathOf(request).startsWith('/sites/') || isShell(request);
   page.on('request', request => { if (watched(request)) pending.add(request); });
   page.on('response', response => {
-    if (watched(response.request())) requests.push({ url: response.url(), status: response.status() });
+    if (!watched(response.request())) return;
+    (isShell(response.request()) ? shellRequests : requests).push({ url: response.url(), status: response.status() });
   });
   const failed = [];
   page.on('requestfailed', request => { if (watched(request)) { failed.push({ url: request.url(), error: request.failure() }); pending.delete(request); } });
@@ -94,12 +104,24 @@ test('owner 性能首开文章：帧请求全为 2xx，请求数最多 206', asy
       await expect.poll(() => pending.size).toBe(0);
     });
   } finally {
-    await metric(testInfo, 'article-open', { elapsedMs: performance.now() - started, requests: requests.length, failures: failed, badResponses: requests.filter(r => r.status < 200 || r.status >= 300), urls: requests });
+    await metric(testInfo, 'article-open', {
+      elapsedMs: performance.now() - started,
+      requests: requests.length,
+      failures: failed,
+      badResponses: requests.filter(r => r.status < 200 || r.status >= 300),
+      urls: requests,
+      shell: { requests: shellRequests.length, urls: [...new Set(shellRequests.map(r => r.url))].sort(), statuses: shellRequests.map(r => r.status) },
+    });
   }
   expect.soft(failed).toEqual([]);
   expect.soft(requests.filter(r => r.status < 200 || r.status >= 300), '包含 502 在内的非 2xx 一律失败').toEqual([]);
   expect(requests.length, '确实加载了 97 帧').toBeGreaterThanOrEqual(OWNER_FRAMES);
   expect(requests.length).toBeLessThanOrEqual(OWNER_FRAMES * 2 + 12);
+  // 共享外壳单列：恰好两条已版本化资源（内容摘要进 query，不锁摘要值，一条路径只许
+  // 一个版本）；no-cache + ETag 的缓存 304 合法，4xx/5xx 照拦，网络失败已并入上面的 failed。
+  const shellUrls = [...new Set(shellRequests.map(r => r.url))].sort();
+  expect.soft(shellUrls.map(u => new URL(u).pathname), '共享外壳恰好是 shell CSS 与 boot JS 各一条版本化 URL').toEqual(['/api/frame-boot.js', '/api/frame-shell.css']);
+  expect.soft(shellRequests.filter(r => r.status !== 304 && (r.status < 200 || r.status >= 300)), '共享外壳只允许 2xx 与缓存 304').toEqual([]);
 });
 
 test.beforeEach(async ({ page, request }) => {
