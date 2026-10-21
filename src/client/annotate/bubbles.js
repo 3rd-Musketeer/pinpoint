@@ -34,43 +34,72 @@ export function clearBubbles() {
   });
 }
 
+function shownBubbleN() {
+  return ctx.bubbleShowN != null ? ctx.bubbleShowN : ctx.bubbleFocusN;
+}
+
+// 画布实例只建当前这一张卡：无 hover / 定位时不建。行从本次可见标注里按 n 取，
+// 所以 SSE 换掉 marks 数组之后读到的是新对象，不另留一份卡缓存。
+function canvasBubbleMark(pageMarks) {
+  var n = shownBubbleN();
+  if (n == null) return null;
+  for (var i = 0; i < pageMarks.length; i++) {
+    if (String(pageMarks[i].n) === String(n) && !isMarkBroken(pageMarks[i])) return pageMarks[i];
+  }
+  return null;
+}
+
+function mountBubble(m) {
+  var node = document.createElement('div');
+  node.className = 'ann-bubble';
+  node.setAttribute('data-ann-ui', '');
+  node.setAttribute('data-n', m.n);
+  var html = bubbleInnerHtml(bubbleMarkView(m));
+  node.innerHTML = html;
+  node.addEventListener('click', function (e) {
+    if (e.target.closest('.ann-bubble')) { e.stopPropagation(); openMark(m.n); }
+  });
+  // 指针从钉子挪到卡上 = 继续读，不收
+  node.addEventListener('mouseenter', function () { showBubbleFor(m.n, 0); });
+  node.addEventListener('mouseleave', hideBubbleSoon);
+  ctx.bubblesLayer.appendChild(node);
+  return { m: m, node: node, height: 0, html: html };
+}
+
+function writeBubble(entry, m) {
+  entry.m = m;
+  var nextHtml = bubbleInnerHtml(bubbleMarkView(m));
+  if (entry.html !== nextHtml) {
+    entry.node.innerHTML = nextHtml;
+    entry.html = nextHtml;
+    entry.height = 0;
+  }
+}
+
 export function syncBubbleStructure(pageMarks) {
   if (!ctx.renderComments) { clearBubbles(); return; }
   var keep = Object.create(null);
-  pageMarks.forEach(function (m) {
-    if (isMarkBroken(m)) return;            // 无锚点 → 无法定位气泡
-    keep[m.n] = true;
-    var entry = ctx.bubbleNodes[m.n];
-    if (!entry) {
-      var node = document.createElement('div');
-      node.className = 'ann-bubble';
-      node.setAttribute('data-ann-ui', '');
-      node.setAttribute('data-n', m.n);
-      var html = bubbleInnerHtml(bubbleMarkView(m));
-      node.innerHTML = html;
-      node.addEventListener('click', function (e) {
-        if (e.target.closest('.ann-bubble')) { e.stopPropagation(); openMark(m.n); }
-      });
-      // 指针从钉子挪到卡上 = 继续读，不收
-      node.addEventListener('mouseenter', function () { showBubbleFor(m.n, 0); });
-      node.addEventListener('mouseleave', hideBubbleSoon);
-      ctx.bubblesLayer.appendChild(node);
-      entry = ctx.bubbleNodes[m.n] = { m: m, node: node, height: 0, html: html };
-    } else {
-      entry.m = m;
-      var nextHtml = bubbleInnerHtml(bubbleMarkView(m));
-      if (entry.html !== nextHtml) {
-        entry.node.innerHTML = nextHtml;
-        entry.html = nextHtml;
-        entry.height = 0;
-      }
+  if (canvasStage()) {
+    var shown = canvasBubbleMark(pageMarks);
+    if (shown) {
+      keep[shown.n] = true;
+      var current = ctx.bubbleNodes[shown.n];
+      if (!current) ctx.bubbleNodes[shown.n] = mountBubble(shown);
+      else writeBubble(current, shown);
     }
-  });
-  // DOM writes above are complete before any height reads. Canvas comments
-  // are measured only when hovered/focused, never once per hidden comment.
-  if (!canvasStage()) Object.keys(ctx.bubbleNodes).forEach(function (n) {
-    ctx.bubbleNodes[n].height = ctx.bubbleNodes[n].node.offsetHeight || 0;
-  });
+  } else {
+    pageMarks.forEach(function (m) {
+      if (isMarkBroken(m)) return;            // 无锚点 → 无法定位气泡
+      keep[m.n] = true;
+      var entry = ctx.bubbleNodes[m.n];
+      if (!entry) ctx.bubbleNodes[m.n] = mountBubble(m);
+      else writeBubble(entry, m);
+    });
+    // DOM writes above are complete before any height reads.
+    Object.keys(ctx.bubbleNodes).forEach(function (n) {
+      ctx.bubbleNodes[n].height = ctx.bubbleNodes[n].node.offsetHeight || 0;
+    });
+  }
   Object.keys(ctx.bubbleNodes).forEach(function (n) {
     if (keep[n]) return;
     if (ctx.bubbleNodes[n].node.parentNode) ctx.bubbleNodes[n].node.parentNode.removeChild(ctx.bubbleNodes[n].node);
@@ -90,7 +119,7 @@ function gutterRendersForUs() {
 }
 
 export function updateCanvasBubble() {
-  var n = ctx.bubbleShowN != null ? ctx.bubbleShowN : ctx.bubbleFocusN;
+  var n = shownBubbleN();
   var bubble = ctx.bubbleNodes[n];
   if (!bubble) return;
   var mark = ctx.markNodes[n];
