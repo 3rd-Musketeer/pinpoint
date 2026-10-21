@@ -522,7 +522,8 @@ test('右栏：画布标注按位置穿插在正文评论之间，四态、原�
       // scrolling into view 把页面挪到 1583，浮层保存/恢复的就是 1583）——先把目标滚到位
       // 再记 at，at 才是浮层打开时真正的滚动位置。
       const kind = rail.locator(`.pp-thread[data-kind="canvas"][data-n="${plainN}"] .pp-kind`).first();
-      await kind.scrollIntoViewIfNeeded();
+      // 右栏合法重画会替换节点；trial click 在脱离时重查 locator，完成点击前的滚动准备但不打开浮层。
+      await kind.click({ trial: true });
       const at = await scrollOf(page);
       await kind.click();
       await expect(overlay(page)).toHaveAttribute('open', '');
