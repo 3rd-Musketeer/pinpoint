@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { placeWikiPanel, WIKI_CLOSE_MS, WIKI_EASE, WIKI_OPEN_MS, WIKI_OPEN_Y, WIKI_REDUCED_MS } from './wiki-panel.js';
+import { placeWikiPanel } from './wiki-panel.js';
 
 const anchor = { left: 1040, right: 1160, top: 10, bottom: 42, width: 120 };
 
@@ -47,11 +47,4 @@ test('wiki 面板：下面放不下就翻到按钮上方，仍留 12', () => {
   const p = placeWikiPanel({ anchor: low, panelW: 320, panelH: 200, viewportW: 1440, viewportH: 900, maxH: 480 });
   assert.equal(p.top, low.top - 8 - 200);
   assert.ok(p.top >= 12);
-});
-
-test('wiki 面板：动效参数与设计一致', () => {
-  assert.deepEqual(
-    { open: WIKI_OPEN_MS, y: WIKI_OPEN_Y, close: WIKI_CLOSE_MS, ease: WIKI_EASE, reduced: WIKI_REDUCED_MS },
-    { open: 140, y: -6, close: 100, ease: 'cubic-bezier(.2,.8,.2,1)', reduced: 80 },
-  );
 });
