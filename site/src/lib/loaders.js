@@ -30,11 +30,26 @@ export function watchAll(ctx, source, reload) {
   // 盯的目录跟着登记表走：每次重读后按新的 project 清单重算，登记之后才有的 project
   // （ppnt new project / add --project）里新建的文章也能读到。返回这次有没有新加的目录。
   let targets = [];
+  // 同一实体可能以等价前缀到达事件（macOS 上 /var 是 /private/var 的 symlink，watcher 可交付
+  // realpath 形态；2026-10-21 r3 诊断）：targets 同时认可 raw 与 realpath（存在时），去重。
+  // realpath 只在 track 时解析一次：事件回调保持纯字符串比较、无逐事件 fs I/O；
+  // 删除事件的文件已不存在，靠的就是登记时记下的这个前缀。注册进 watcher 的仍只是原 roots。
+  const expand = (roots) => {
+    const out = [];
+    for (const root of roots) {
+      if (!out.includes(root)) out.push(root);
+      let real;
+      try { real = fs.realpathSync(root); } catch { continue; } // 不存在的 target：只留 raw
+      if (!out.includes(real)) out.push(real);
+    }
+    return out;
+  };
   const track = (next) => {
     if (!next) return false;
     const before = new Set(targets);
-    targets = [next.registryPath, ...next.projects.map((p) => p.dir)];
-    ctx.watcher.add(targets);
+    const roots = [next.registryPath, ...next.projects.map((p) => p.dir)];
+    ctx.watcher.add(roots);
+    targets = expand(roots);
     return targets.some((t) => !before.has(t));
   };
   track(source);

@@ -168,6 +168,54 @@ test('watchAll：新 project 加进监听之前就写好的文章，加完之后
     '加进监听之前写好的文章没有读到：站点会一直 404');
 });
 
+test('watchAll：登记 alias 根（symlink）时，真实路径形态的 change/add/unlink 同样触发重读；相似前缀兄弟不触发', async (t) => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-watch-alias-'));
+  t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  const real = path.join(tmp, 'real');
+  const dir = path.join(real, 'docs', 'pinpoint');
+  fs.mkdirSync(path.join(dir, 'articles', 'a'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'articles', 'a', 'index.mdx'), 'a');
+  fs.writeFileSync(path.join(real, 'registry.json'), '{}');
+  const alias = path.join(tmp, 'alias');
+  fs.symlinkSync(real, alias, 'dir');
+  const aliasDir = path.join(alias, 'docs', 'pinpoint');
+  const aliasReg = path.join(alias, 'registry.json');
+  // watcher 交付的事件可以是同一实体的真实路径形态（macOS 上 /var → /private/var；
+  // 这里用显式 symlink 复现这一对等价根）。
+  const realDir = fs.realpathSync(aliasDir);
+
+  const watcher = new EventEmitter();
+  watcher.added = [];
+  watcher.add = (paths) => { watcher.added.push(...[].concat(paths)); };
+  const ctx = { watcher, logger: { error: (m) => { throw new Error(m); } } };
+  const source = { registryPath: aliasReg, projects: [{ id: 'p', dir: aliasDir }] };
+  let runs = 0;
+  const reload = () => { runs++; return Promise.resolve(source); };
+  watchAll(ctx, source, reload);
+
+  // 注册进 watcher 的仍只有原 roots：realpath 前缀只用于事件匹配，不改变注册清单。
+  assert.deepEqual(watcher.added, [aliasReg, aliasDir]);
+
+  for (const event of ['change', 'add']) {
+    const before = runs;
+    watcher.emit(event, path.join(realDir, 'articles', 'a', 'index.mdx'));
+    await settle();
+    assert.ok(runs > before, `${event}（真实路径形态）被丢掉：没有重读`);
+  }
+  // 删除后文件已不存在，unlink 事件只能靠登记时记下的等价前缀匹配。
+  fs.rmSync(path.join(dir, 'articles', 'a', 'index.mdx'));
+  const before = runs;
+  watcher.emit('unlink', path.join(realDir, 'articles', 'a', 'index.mdx'));
+  await settle();
+  assert.ok(runs > before, 'unlink（真实路径形态）被丢掉：没有重读');
+
+  // 前缀相似的无关兄弟不触发：匹配不能放松成裸字符串前缀。
+  const siblingBefore = runs;
+  watcher.emit('change', `${realDir}-sibling/articles/a/index.mdx`);
+  await settle();
+  assert.equal(runs, siblingBefore);
+});
+
 test('conceptsLoader：wiki 正文 render 失败保留路由并带 renderError，页面有得显示（r5 T5）', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-concepts-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
