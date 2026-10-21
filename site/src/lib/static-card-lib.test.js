@@ -18,9 +18,12 @@ test('classifyFrameScript：ios-kit 与内联 frame-boot 是 boot，预览脚本
   assert.equal(classifyFrameScript({ src: '/kits/ios/ios-kit.js' }), 'boot');
   assert.equal(classifyFrameScript({ src: 'http://127.0.0.1:7400/kits/ios/ios-kit.js' }), 'boot');
   assert.equal(classifyFrameScript({ src: '/api/frame-boot.js' }), 'boot');
-  assert.equal(classifyFrameScript({ src: 'http://127.0.0.1:8110/api/frame-boot.js' }), 'boot');
+  assert.equal(classifyFrameScript({ src: 'https://outside.invalid/api/frame-boot.js' }), 'other');
+  assert.equal(classifyFrameScript({ src: '//other-host/api/frame-boot.js' }), 'other');
+  assert.equal(classifyFrameScript({ src: 'http://127.0.0.1:8110/api/frame-boot.js' }), 'other');
   assert.equal(classifyFrameScript({ text: `/**\n * ${FRAME_BOOT_MARKER}（阶段 5）。*/` }), 'boot');
   assert.equal(classifyFrameScript({ src: '/api/frame-boot.js', text: 'console.log(1)' }), 'boot');
+  assert.equal(classifyFrameScript({ src: '/api/frame-boot.js', attrs: 'data-preview-script' }), 'preview');
   assert.equal(classifyFrameScript({ src: '/api/not-frame-boot.js', text: FRAME_BOOT_MARKER }), 'other');
   assert.equal(classifyFrameScript({ attrs: 'type="text/x-pinpoint-preview" data-preview-script="true"' }), 'preview');
   assert.equal(classifyFrameScript({ attrs: 'data-preview-mount' }), 'preview');
