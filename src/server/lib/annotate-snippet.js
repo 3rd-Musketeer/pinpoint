@@ -14,9 +14,9 @@ import { annotateClientSrc, proseClientSrc } from './annotate-bundle.js';
 import { parseReqUrl } from './req-url.js';
 
 /**
- * options.prose（pp3，文章页）：`{ project, article }`。客户端见到
- * `window.__pinpointProse` 就只跑正文评论（选中文字 → 右栏线程），不起画布
- * 标注的工具条与侧栏；桶 = entryId（文章页 id），账本固定 @prose。
+ * options.prose（pp3，文章页）：`{ project, article }`。注入器选择正文入口
+ * /prose.js，并写 `window.__pinpointProse`；这条路径只跑正文评论（选中文字 →
+ * 右栏线程），不下载画布标注包。桶 = entryId（文章页 id），账本固定 @prose。
  */
 export function annotateSnippet(entryId, options = {}) {
   const prose = options.prose

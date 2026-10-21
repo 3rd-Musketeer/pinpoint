@@ -181,11 +181,22 @@ function refreshFrameContent(roots) {
     updateBubbleGeometry(); updateDraftGeometry(); syncGhost();
   });
 }
+/** 滚动发生在标注客户端自己的层，或工作台左栏 / 标注列表里。这些容器不带动帧锚点。
+ *  复用 isUI（[data-ann-ui]）：工具条、气泡、侧栏、左栏、标注列表都带这个标记。
+ *  注入页的正文没有这个标记，不在这里。HTML 卡片整张也带 data-ann-ui，但帧内
+ *  滚动由调用方先按 .wb-screen 分出去，不会进到这个判断。 */
+function annotationChromeScroll(event) {
+  var target = event.target;
+  if (!target || !target.closest) return false;
+  return !!(isUI(target) || target.closest('#wbside, #wbann-list'));
+}
+
 export function onViewChange(event) {
   var stage = canvasStage();
   if (!event || event.type !== 'scroll' || event.target !== stage) {
     var root = event && event.type === 'scroll' && event.target.closest && event.target.closest('.wb-screen');
     if (root && ctx.canvasView) ctx.dirtyFrameRoots.add(root);
+    else if (event && event.type === 'scroll' && annotationChromeScroll(event)) { /* 外壳滚动不移动帧锚点 */ }
     else ctx.geometryDirty = true;
   }
   scheduleViewUpdate();

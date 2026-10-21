@@ -28,7 +28,7 @@ const STUBS = {
     export function updateBubbleGeometry() {}`,
   'dom.js': `
     export function geometryBatch(fn) { return fn(); }
-    export function isUI() { return false; }`,
+    export function isUI(el) { return !!(el && el.closest && el.closest('[data-ann-ui]')); }`,
   'gesture.js': `export function updateDraftGeometry() {}`,
   'render-geometry.js': `
     export function syncCanvasPose() {}
@@ -36,7 +36,7 @@ const STUBS = {
     export function updateCountLabel() {}
     export function updateMarkGeometry() {}`,
   'render.js': `
-    export function canvasStage() { return null; }
+    export function canvasStage() { return globalThis.__scheduleStage || null; }
     export function drawableMark() { return true; }
     export function prepareCanvasView() {}
     export function syncMarkStructure() {}
@@ -195,4 +195,70 @@ test('机壳时钟走一格（状态栏换文字节点）既不整层重绘，�
   flushFrames();
   assert.equal(calls.renderAll, 0);
   assert.equal(calls.refreshFrameContent, 0);
+});
+
+// C4：外壳滚动不移动帧锚点。isUI 认 [data-ann-ui]；左栏和标注列表即使标记漏了也按 id 早退。
+// 帧内滚动仍局部标脏，页面正文、外层滚动和 resize 仍整层标脏。
+function scrollTarget({ id = '', classes = '', ui = false, screen = null }) {
+  const node = {
+    nodeType: 1,
+    id,
+    className: classes,
+    closest(selector) {
+      if (selector === '.wb-screen') return screen;
+      if (selector === '[data-ann-ui]') return ui ? node : null;
+      if (selector.split(',').some(part => part.trim() === '#' + id)) return node;
+      return null;
+    },
+  };
+  return node;
+}
+
+test('标注 UI、左栏和标注列表的滚动不置 geometryDirty；帧内局部标脏，正文滚动和 resize 整层标脏', () => {
+  const ctx = install(GLOBAL_MARKS);
+  const stage = { nodeType: 1, id: 'wbstage' };
+
+  function fresh() {
+    ctx.geometryDirty = false;
+    ctx.dirtyFrameRoots.clear();
+  }
+
+  fresh();
+  schedule.onViewChange({ type: 'scroll', target: scrollTarget({ id: 'ann-sidebar', ui: true }) });
+  assert.equal(ctx.geometryDirty, false, '注入页标注侧栏不标脏');
+  assert.equal(ctx.dirtyFrameRoots.size, 0);
+
+  fresh();
+  schedule.onViewChange({ type: 'scroll', target: scrollTarget({ id: 'wbside', ui: true }) });
+  assert.equal(ctx.geometryDirty, false, '工作台左栏不标脏');
+
+  fresh();
+  schedule.onViewChange({ type: 'scroll', target: scrollTarget({ id: 'wbann-list' }) });
+  assert.equal(ctx.geometryDirty, false, '标注列表按 id 早退，不依赖 data-ann-ui');
+
+  fresh();
+  const screen = scrollTarget({ classes: 'wb-screen', ui: true, screen: null });
+  screen.closest = selector => (selector === '.wb-screen' ? screen : selector === '[data-ann-ui]' ? screen : null);
+  schedule.onViewChange({ type: 'scroll', target: screen });
+  assert.equal(ctx.geometryDirty, false, '帧内滚动不升级成整层');
+  assert.equal(ctx.dirtyFrameRoots.has(screen), true, '帧内滚动仍进 dirtyFrameRoots，即使卡片带 data-ann-ui');
+
+  fresh();
+  schedule.onViewChange({ type: 'scroll', target: scrollTarget({ id: 'article' }) });
+  assert.equal(ctx.geometryDirty, true, '注入页正文滚动仍整层标脏');
+
+  fresh();
+  globalThis.__scheduleStage = stage;
+  schedule.onViewChange({ type: 'scroll', target: stage });
+  globalThis.__scheduleStage = null;
+  assert.equal(ctx.geometryDirty, false, '画布舞台滚动沿用原来的不标脏');
+  assert.equal(ctx.dirtyFrameRoots.size, 0);
+
+  fresh();
+  schedule.onViewChange({ type: 'resize', target: globalThis });
+  assert.equal(ctx.geometryDirty, true, 'resize 仍整层标脏');
+
+  fresh();
+  schedule.onViewChange();
+  assert.equal(ctx.geometryDirty, true, '没有事件的调用仍整层标脏');
 });
